@@ -1,0 +1,10 @@
+mail-tools.pfennig.haus {
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "same-origin"
+    Cache-Control "no-store"
+    Strict-Transport-Security "max-age=31536000"
+  }
+  reverse_proxy 127.0.0.1:3100
+}

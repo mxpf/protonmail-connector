@@ -1,0 +1,19 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.venv/
+__pycache__/
+.DS_Store
+*.log
+dist/
+remote/.wrangler/
+remote/.dev.vars*
+*.local.json
+*.pem
+*.key
+*.sqlite*
+.state/
+
+# Private deployment history and local operator notes
+*.local.md

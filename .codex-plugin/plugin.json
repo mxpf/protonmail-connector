@@ -1,0 +1,25 @@
+{
+  "name": "protonmail-connector",
+  "version": "0.1.0",
+  "description": "Search, read, draft, and manage Proton Mail through a private hosted connector.",
+  "author": {
+    "name": "Max Pfennighaus"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Proton Mail Connector",
+    "shortDescription": "Read and write your Proton Mail.",
+    "longDescription": "Connect to your Proton mailbox to search, read, create drafts, and send on your instructions.",
+    "developerName": "Max Pfennighaus",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": "Help me find and manage my Proton Mail.",
+    "composerIcon": "./assets/proton-mail-connector-logo.png",
+    "logo": "./assets/proton-mail-connector-logo.png",
+    "logoDark": "./assets/proton-mail-connector-logo.png"
+  },
+  "apps": "./.app.json"
+}

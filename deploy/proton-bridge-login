@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+test "$(id -u)" = 0 || { echo 'Run with sudo.'; exit 1; }
+test -t 0 || { echo 'An interactive terminal is required.'; exit 1; }
+# Serialize logins and avoid competing Bridge instances using the same vault.
+exec 9>/run/proton-bridge-login.lock
+flock -n 9 || { echo 'A Bridge login session is already open.'; exit 1; }
+systemctl stop proton-bridge.service
+trap 'systemctl start proton-bridge.service' EXIT
+cd /var/lib/protonbridge
+printf '\nType login, then follow Proton’s prompts. Password input is hidden.\nWhen finished, type exit to return Bridge to background operation.\n\n'
+sudo -H -u protonbridge /usr/bin/protonmail-bridge --cli --log-level error

@@ -1,0 +1,31 @@
+[Unit]
+Description=Proton Mail Bridge (private local IMAP/SMTP)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=protonbridge
+Group=protonbridge
+Environment=HOME=/var/lib/protonbridge
+WorkingDirectory=/var/lib/protonbridge
+ExecStart=/usr/bin/protonmail-bridge --noninteractive --log-level warn
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/protonbridge
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

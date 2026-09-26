@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Receive the dedicated GitHub OAuth secret directly on the hosted server."""
+import fcntl
+import getpass
+import json
+import os
+from pathlib import Path
+import pwd
+import resource
+import sys
+import tempfile
+import warnings
+
+
+def main():
+    if os.geteuid() != 0 or not sys.stdin.isatty():
+        raise RuntimeError("Run this helper through an interactive sudo SSH session.")
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    os.umask(0o077)
+    with open('/run/proton-connector-oauth-setup.lock', 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        target = Path('/var/lib/protonconnector/oauth-config.json')
+        if target.exists() or target.is_symlink():
+            raise RuntimeError("OAuth configuration already exists; nothing changed.")
+        account = pwd.getpwnam('protonconnector')
+        print('Paste the client secret for GitHub app Proton Mail Connector.')
+        print('The input is hidden. Press Return after pasting.')
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', getpass.GetPassWarning)
+            secret = getpass.getpass('GitHub client secret: ')
+        if not 20 <= len(secret) <= 200 or not secret.isascii() or any(c.isspace() for c in secret):
+            raise RuntimeError('Secret format was not accepted; nothing saved.')
+        config = {
+            'issuerUrl': 'https://mail-tools.pfennig.haus',
+            'githubClientId': 'Ov23litc0Dfpg4yB8vl9',
+            'githubClientSecret': secret,
+            'githubOwnerId': '546459',
+            'githubOwnerLogin': 'mxpf',
+        }
+        fd, temporary = tempfile.mkstemp(prefix='.oauth-', dir=target.parent)
+        try:
+            with os.fdopen(fd, 'w') as output:
+                os.fchmod(output.fileno(), 0o600)
+                os.fchown(output.fileno(), account.pw_uid, account.pw_gid)
+                json.dump(config, output)
+                output.write('\n')
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, target)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        print('GitHub sign-in credentials saved privately on the server.')
+        print('The public mail connector remains disabled until authentication is ready.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (EOFError, KeyboardInterrupt):
+        print('\nCancelled; no new credentials saved.', file=sys.stderr)
+        sys.exit(1)
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
+    except Exception:
+        print('Setup failed; no credential values were printed.', file=sys.stderr)
+        sys.exit(1)

@@ -1,0 +1,38 @@
+[Unit]
+Description=Proton Mail Connector authenticated HTTPS backend
+Wants=network-online.target proton-bridge.service
+After=network-online.target proton-bridge.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=protonconnector
+Group=protonconnector
+WorkingDirectory=/opt/protonmail-connector/current
+Environment=NODE_ENV=production
+Environment=PROTON_CONFIG=/var/lib/protonconnector/config.json
+Environment=PROTON_OAUTH_CONFIG=/var/lib/protonconnector/oauth-config.json
+Environment=PROTON_OAUTH_DB=/var/lib/protonconnector/oauth.sqlite
+ExecStart=/usr/local/bin/node /opt/protonmail-connector/current/dist/src/http.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/protonconnector
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=768M
+TasksMax=128
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target
