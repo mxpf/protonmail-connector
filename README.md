@@ -20,13 +20,7 @@ prevents reuse and does not automatically retry an uncertain delivery.
 
 ## How it works
 
-```mermaid
-flowchart LR
-  A[AI assistant] -->|HTTPS / OAuth| C[Hosted MCP connector]
-  G[GitHub owner sign-in] --> C
-  C -->|Loopback IMAP / SMTP with TLS| B[Proton Mail Bridge]
-  B --> P[Proton Mail]
-```
+![AI assistant connects over HTTPS and OAuth to the hosted MCP connector, which uses loopback IMAP and SMTP with TLS to reach Proton Mail Bridge and Proton Mail. GitHub verifies the owner’s identity.](assets/how-it-works.png)
 
 The connector runs on a Linux server behind Caddy. Bridge and the connector use
 separate Unix accounts. Mail ports stay on loopback; the public endpoint requires
