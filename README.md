@@ -1,3 +1,5 @@
+<img src="assets/proton-mail-connector-logo.png" alt="Proton Mail Connector logo" width="160" height="160">
+
 # Proton Mail Connector
 
 A self-hosted MCP connector that gives an AI assistant access to the owner's
