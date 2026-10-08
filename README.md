@@ -13,8 +13,12 @@ This is an independent project, not an official Proton product.
 ## What it does
 
 Ten tools support folder listing, bounded message search, reading messages and
-attachments, creating drafts, preparing and sending plain-text email, moving
-messages, setting read/star flags, and checking the connection.
+attachments, creating drafts, preparing and sending plain-text or sanitized
+rich-text email, moving messages, setting read/star flags, and checking the
+connection. Rich-text messages are sent as multipart email with a required
+plain-text fallback. The connector permits basic paragraphs, emphasis, lists,
+quotes, and safe links; it removes scripts, images, tracking content, custom
+styles, and unsafe URLs.
 
 Sending uses an exact preview and a short-lived, single-use token. The assistant
 is instructed to send only on explicit user authorization. A durable ledger

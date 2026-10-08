@@ -13,12 +13,14 @@ export const messageRef = z.object({
 }).strict();
 
 const address = z.string().email().max(254).regex(/^[^\r\n\0]+$/);
+const richHtml = z.string().min(1).max(128_000).regex(/^[^\0]*$/).optional();
 export const composition = z.object({
   to: z.array(address).min(1).max(25),
   cc: z.array(address).max(25).default([]),
   bcc: z.array(address).max(25).default([]),
   subject: z.string().max(998).regex(/^[^\r\n\0]*$/),
   text: z.string().max(64_000),
+  html: richHtml,
   replyToMessage: messageRef.optional(),
 }).strict();
 
@@ -49,11 +51,11 @@ export const tools = {
     schema: z.object({message: messageRef, index: z.number().int().min(0).max(1000)}).strict(),
   },
   proton_create_draft: {
-    description: 'Create a new draft in Proton. Does not send. Use only when the user requests a draft in their mailbox. A reply source supplies threading headers; recipients remain explicit. Does not replace existing drafts.',
+    description: 'Create a new draft in Proton. Does not send. Use only when the user requests a draft in their mailbox. A reply source supplies threading headers; recipients remain explicit. Does not replace existing drafts. Optional HTML is sanitized and sent with the required plain-text fallback.',
     schema: composition,
   },
   proton_prepare_send: {
-    description: 'Prepare an exact email preview and a short-lived send token; does not send. Requires explicit recipients, subject, and plain-text body. Optional reply source supplies threading headers. Show the complete preview to the user before sending unless they have already authorized that exact email.',
+    description: 'Prepare an exact email preview and a short-lived send token; does not send. Requires explicit recipients, subject, and plain-text body. Optional sanitized HTML enables rich formatting while preserving the text fallback. Both bodies must convey the same content. Optional reply source supplies threading headers. Show the complete preview to the user before sending unless they have already authorized that exact email.',
     schema: composition,
   },
   proton_send_prepared: {
@@ -96,5 +98,6 @@ Search narrowly first, then read selected messages. Do not download the entire m
 Keep technical message references internal. Explain connection failures without exposing credentials.
 Downloading or reading a message does not authorize contacting anyone or altering files.
 Prepare and inspect the exact recipients (including cc/bcc), subject and body before sending.
+For rich-text mail, provide both the plain-text fallback and matching HTML. The connector sanitizes HTML and returns the exact sanitized version in the preview.
 Send only on the user's explicit instructions. A request to draft is not a request to send.
 Treat unknown delivery status as unresolved, not failed: never automatically retry.`;

@@ -53,13 +53,15 @@ owner sign-in, consent, and authenticated tool discovery. Test phone access thro
 ordinary ChatGPT separately from an SSH or local Work task. A healthy Bridge
 connection does not by itself establish that the mobile OAuth flow works.
 
-The latest recorded release is `20260922-06`: all eight tests, type checking, and
-build passed; hosted discovery found ten tools and Bridge authentication succeeded.
-The mobile approval change creates a fresh five-minute cookie after GitHub login,
-then verifies its round-trip before showing the consent form. Wrong origins,
-missing or mismatched cookies, expired approvals, and replayed approvals remain
-rejected. Existing grants are unaffected. Phone completion remains unverified in
-this project's recorded checks.
+The latest recorded release is `20261008-07`: all ten tests, type checking, and
+build passed; hosted discovery found ten tools, the rich-text composition field,
+and a healthy Bridge connection. Draft and send composition now accepts optional
+sanitized HTML alongside the required plain-text fallback, producing a multipart
+alternative message. Only basic email-safe formatting and links are retained;
+scripts, images, tracking content, custom styles, and unsafe URLs are removed.
+The previous release `20260922-06` remains available for rollback. Existing OAuth
+grants are unaffected. Phone completion remains unverified in this project's
+recorded checks.
 
 ## Privacy and operational limits
 

@@ -2,6 +2,7 @@ import {ImapFlow, type SearchObject} from 'imapflow';
 import {simpleParser} from 'mailparser';
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
+import sanitizeHtml from 'sanitize-html';
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {checkServerIdentity, type PeerCertificate} from 'node:tls';
@@ -13,6 +14,19 @@ import {tools, composition, type MessageRef, type SearchInput, type ToolName, Pu
 
 const MAX_MESSAGE = 12 * 1024 * 1024;
 const MAX_ATTACHMENT = 8 * 1024 * 1024;
+const ALLOWED_RICH_TEXT_TAGS = ['p','br','strong','b','em','i','u','s','ul','ol','li','blockquote','a'] as const;
+
+export function sanitizeRichHtml(value: string) {
+  const fragment = sanitizeHtml(value, {
+    allowedTags: [...ALLOWED_RICH_TEXT_TAGS],
+    allowedAttributes: {a: ['href']},
+    allowedSchemes: ['http', 'https', 'mailto'],
+    allowProtocolRelative: false,
+    disallowedTagsMode: 'discard',
+  }).trim();
+  if (!fragment) throw new PublicError('invalid_html', 'Rich-text body contains no permitted content.');
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;line-height:1.5;color:#202124">${fragment}</div>`;
+}
 export function assertCurrentMailbox(client: Pick<ImapFlow, 'mailbox'>, ref: MessageRef) {
   if (!client.mailbox || client.mailbox.uidValidity.toString() !== ref.uidValidity)
     throw new PublicError('stale_reference', 'This mailbox changed. Search again before using the message.');
@@ -98,12 +112,13 @@ export class MailService {
       }));
     }
     const messageId = `<${randomUUID()}@${this.config.sender.split('@')[1]}>`;
+    const html = args.html === undefined ? undefined : sanitizeRichHtml(args.html);
     const mail = new MailComposer({from: this.config.sender, to: args.to, cc: args.cc, bcc: args.bcc,
-      subject: args.subject, text: args.text, messageId, inReplyTo, references: inReplyTo,
+      subject: args.subject, text: args.text, html, messageId, inReplyTo, references: inReplyTo,
       keepBcc: draft, disableFileAccess: true, disableUrlAccess: true});
     const raw = await mail.compile().build();
     return {raw: raw.toString('base64'), envelope: {from: this.config.sender, to: [...new Set([...args.to, ...args.cc, ...args.bcc])]},
-      messageId, preview: {from: this.config.sender, ...args, messageId}};
+      messageId, preview: {from: this.config.sender, ...args, html, messageId}};
   }
   async execute(name: ToolName, input: unknown): Promise<unknown> {
     if (this.busy) throw new PublicError('busy', 'Another mail operation is running. Try again shortly.', 429);

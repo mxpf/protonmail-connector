@@ -11,7 +11,10 @@ const client=new Client({name:'hosted-proton-check',version:'0.1.0'});
 try {
   await client.connect(transport);
   const result=await client.listTools();
+  const prepare=result.tools.find(tool=>tool.name==='proton_prepare_send');
+  const richTextSchema=Boolean(prepare?.inputSchema?.properties?.html);
+  if (!richTextSchema) throw new Error('Hosted connector does not expose the rich-text composition field.');
   const status=await client.callTool({name:'proton_status',arguments:{}});
   if (status.isError) throw new Error('Connection check failed.');
-  console.log(JSON.stringify({mcpConnected:true,toolCount:result.tools.length,authenticated:true}));
+  console.log(JSON.stringify({mcpConnected:true,toolCount:result.tools.length,authenticated:true,richTextSchema}));
 } finally {await client.close();}
