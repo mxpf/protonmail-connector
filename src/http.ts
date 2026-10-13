@@ -8,7 +8,7 @@ import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/st
 import {createServer} from './server.js';
 import {MailService} from './mail.js';
 import {loadConfig} from './config.js';
-import {OAuthStore, ProtonOAuth, loadOAuthConfig, opaque, hash, validOpaque, SCOPE, type Pending, type Consent} from './oauth.js';
+import {OAuthStore, ProtonOAuth, loadOAuthConfig, opaque, hash, validOpaque, SCOPE, HEALTH_SCOPE, type Pending, type Consent} from './oauth.js';
 
 const BASE_CSP = "default-src 'none'; img-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 export function consentPolicy(redirectUri:string) {
@@ -118,11 +118,18 @@ export function createHttpApp(provider:ProtonOAuth,service:Pick<MailService,'exe
   });
   app.use(mcpAuthRouter({provider,issuerUrl:new URL(origin),resourceServerUrl:new URL(provider.resource),resourceName:'Proton Mail Connector',scopesSupported:[SCOPE],
     clientRegistrationOptions:{clientSecretExpirySeconds:0,rateLimit:{windowMs:3600000,limit:10}}}));
-  app.use('/mcp',requireBearerAuth({verifier:provider,requiredScopes:[SCOPE],resourceMetadataUrl:getOAuthProtectedResourceMetadataUrl(new URL(provider.resource))}));
+  app.use('/mcp',requireBearerAuth({verifier:provider,resourceMetadataUrl:getOAuthProtectedResourceMetadataUrl(new URL(provider.resource))}));
+  app.use('/mcp',(req,res,next)=>{
+    const scopes=req.auth?.scopes ?? [];
+    if (!scopes.includes(SCOPE) && !(scopes.length===1 && scopes[0]===HEALTH_SCOPE)) {
+      res.status(403).send('Insufficient scope.');return;
+    }
+    next();
+  });
   app.post('/mcp',express.json({limit:'300kb'}),async(req,res)=>{
     const requestOrigin=req.get('origin');
     if(requestOrigin && ![origin,'https://chatgpt.com','https://chat.openai.com'].includes(requestOrigin)) {res.status(403).send('Origin not permitted.');return;}
-    const server=createServer(service);
+    const server=createServer(service,req.auth!.scopes.includes(SCOPE) ? undefined : ['proton_status']);
     const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
     res.on('close',()=>{void server.close();});
     await server.connect(transport);

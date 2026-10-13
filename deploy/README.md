@@ -68,7 +68,12 @@ original three byte-for-byte attachment regression checks remain separate eviden
 An authorized self-send from the owner's Proton identity was confirmed in both Sent
 and Inbox. Detailed receipts and mail identities stay in private operator records.
 
-Retain release `20261013-08` for rollback. Existing OAuth grants are preserved.
+The subsequent maintenance-validation release adds strict backup validation,
+immutable archive identity checks on upload resume, and a restricted authenticated
+HTTPS health probe. Regression coverage includes incomplete restores, truncated
+uploads, HTTP-only outages and denial of all other tools to health credentials.
+
+Retain release `20261013-09` for rollback. Existing OAuth grants are preserved.
 Clients caching tool discovery may need a refresh to see the new tools. The full
 phone sign-in and consent flow still requires confirmation in ordinary ChatGPT;
 SSH verification alone does not establish that phone flow.

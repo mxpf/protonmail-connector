@@ -7,10 +7,11 @@ import {loadConfig} from './config.js';
 import {MailService} from './mail.js';
 import {tools, instructions, PublicError, type ToolName, MAX_RESPONSE_BYTES} from '../shared/protocol.js';
 
-export function createServer(service: Pick<MailService, 'execute'>) {
+export function createServer(service: Pick<MailService, 'execute'>, allowedTools?: readonly ToolName[]) {
   const server = new McpServer({name:'proton-mail-connector',version:'0.1.0'}, {instructions});
   const reads = new Set(['proton_status','proton_list_mailboxes','proton_search','proton_thread','proton_read','proton_read_source','proton_read_attachment']);
   for (const name of Object.keys(tools) as ToolName[]) {
+    if (allowedTools && !allowedTools.includes(name)) continue;
     const definition = tools[name];
     server.registerTool(name, {description: definition.description, inputSchema: definition.schema,
       annotations: {readOnlyHint: reads.has(name) || name.startsWith('proton_calendar_'), destructiveHint: ['proton_move','proton_replace_draft','proton_set_flags','proton_send_prepared'].includes(name),

@@ -8,6 +8,8 @@ import type {OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthToken
 import {InvalidGrantError, InvalidTokenError, InvalidClientMetadataError, InvalidScopeError, InvalidTargetError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 
 export const SCOPE = 'proton:mail';
+// Issued only by the SSH maintenance helper, never by public OAuth registration.
+export const HEALTH_SCOPE = 'proton:health';
 export const opaque = () => randomBytes(32).toString('base64url');
 export const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 export const validOpaque = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9_-]{43}$/.test(s);
