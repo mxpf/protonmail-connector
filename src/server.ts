@@ -9,7 +9,7 @@ import {tools, instructions, PublicError, type ToolName, MAX_RESPONSE_BYTES} fro
 
 export function createServer(service: Pick<MailService, 'execute'>) {
   const server = new McpServer({name:'proton-mail-connector',version:'0.1.0'}, {instructions});
-  const reads = new Set(['proton_status','proton_list_mailboxes','proton_search','proton_read','proton_read_attachment']);
+  const reads = new Set(['proton_status','proton_list_mailboxes','proton_search','proton_read','proton_read_source','proton_read_attachment']);
   for (const name of Object.keys(tools) as ToolName[]) {
     const definition = tools[name];
     server.registerTool(name, {description: definition.description, inputSchema: definition.schema,

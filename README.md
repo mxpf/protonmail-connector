@@ -12,13 +12,28 @@ This is an independent project, not an official Proton product.
 
 ## What it does
 
-Ten tools support folder listing, bounded message search, reading messages and
+Eleven tools support folder listing, bounded message search, reading messages and
 attachments, creating drafts, preparing and sending plain-text or sanitized
 rich-text email, moving messages, setting read/star flags, and checking the
 connection. Rich-text messages are sent as multipart email with a required
 plain-text fallback. The connector permits basic paragraphs, emphasis, lists,
 quotes, and safe links; it removes scripts, images, tracking content, custom
 styles, and unsafe URLs.
+
+Message reads recover HTML-only bodies when the MIME parser supplies no readable
+text, including nested Outlook-style messages with inline attachments. Reads
+return `body.source` (`parsed_text`, `html`, or `none`), `body.status`,
+`body.incomplete`, and reasons alongside the existing `text` and `truncated` fields.
+Empty extraction is reported as incomplete, not proof that an email has no body.
+Quoted replies are retained; images are not OCRed.
+
+For incomplete results, `proton_read_source` retrieves raw MIME or decoded HTML in
+base64 pages of at most 64 KiB, using the exact mailbox/UID/UIDVALIDITY reference.
+Follow `nextOffset` with the returned `sourceSha256` for subsequent pages; join
+decoded bytes before interpreting UTF-8 HTML. Recovery HTML is unsanitized data:
+never render it, execute it, or load remote resources. Neither reading nor recovery
+changes message flags. Retrieval is capped at 12 MiB, HTML fallback at 2 Mi
+characters with 128 levels and 20,000 tags, and returned text at 64,000 characters.
 
 Sending uses an exact preview and a short-lived, single-use token. The assistant
 is instructed to send only on explicit user authorization. A durable ledger
@@ -44,7 +59,8 @@ through the AI provider.
 - ChatGPT account linking and discovery of all ten tools were verified on desktop.
 - A mobile approval-session fix was deployed on September 22, 2026. A successful
   ordinary mobile chat test is not yet recorded in this project.
-- Eight automated tests cover message bounds, mutation safety, send replay,
+- Seventeen automated tests cover MIME body recovery, paginated source recovery,
+  message bounds, mutation safety, send replay,
   owner verification, consent/cookie binding, PKCE, token rotation/revocation,
   and MCP protocol discovery. No live sending test has been performed here.
 

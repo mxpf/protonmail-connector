@@ -1,5 +1,4 @@
 import {ImapFlow, type SearchObject} from 'imapflow';
-import {simpleParser} from 'mailparser';
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import sanitizeHtml from 'sanitize-html';
@@ -10,9 +9,9 @@ import {isIP} from 'node:net';
 import type {z} from 'zod';
 import type {Config} from './config.js';
 import {SendLedger, type Prepared} from './send-ledger.js';
+import {extractBody, parseMail, sourcePage, MAX_MESSAGE} from './body.js';
 import {tools, composition, type MessageRef, type SearchInput, type ToolName, PublicError} from '../shared/protocol.js';
 
-const MAX_MESSAGE = 12 * 1024 * 1024;
 const MAX_ATTACHMENT = 8 * 1024 * 1024;
 const ALLOWED_RICH_TEXT_TAGS = ['p','br','strong','b','em','i','u','s','ul','ol','li','blockquote','a'] as const;
 
@@ -68,7 +67,7 @@ export class MailService {
       return await fn();
     } finally { lock.release(); }
   }
-  private async parsed(client: ImapFlow, ref: MessageRef) {
+  private async raw(client: ImapFlow, ref: MessageRef) {
     const meta = await client.fetchOne(String(ref.uid), {size: true}, {uid: true});
     if (!meta || meta.size === undefined || meta.size > MAX_MESSAGE)
       throw new PublicError('message_too_large', 'Message missing or larger than the 12 MiB retrieval limit.');
@@ -80,7 +79,12 @@ export class MailService {
       if (bytes > MAX_MESSAGE) { content.destroy(); throw new PublicError('message_too_large', 'Message exceeds retrieval limit.'); }
       chunks.push(buffer);
     }
-    return simpleParser(Buffer.concat(chunks), {skipImageLinks: true, maxHtmlLengthToParse: MAX_MESSAGE});
+    return Buffer.concat(chunks);
+  }
+  private async parsed(client: ImapFlow, ref: MessageRef) {
+    const raw = await this.raw(client, ref);
+    try { return await parseMail(raw); }
+    catch { throw new PublicError('body_parse_failed', 'MIME parsing failed. Use proton_read_source with raw_mime for bounded recovery.'); }
   }
   private async search(client: ImapFlow, args: SearchInput) {
     const lock = await client.getMailboxLock(args.mailbox, {readOnly: true});
@@ -159,6 +163,21 @@ export class MailService {
         return (await c.list()).map(b => ({path: b.path, specialUse: b.specialUse, selectable: !b.flags.has('\\Noselect')}));
       }
       if (name === 'proton_search') return this.search(c, tools.proton_search.schema.parse(input));
+      if (name === 'proton_read_source') {
+        const args = tools.proton_read_source.schema.parse(input);
+        return this.selected(c, args.message, true, async () => {
+          const meta = await c.fetchOne(String(args.message.uid), {envelope: true}, {uid: true});
+          let source: Buffer;
+          if (args.format === 'raw_mime') source = await this.raw(c, args.message);
+          else {
+            const mail = await this.parsed(c, args.message);
+            if (typeof mail.html !== 'string') throw new PublicError('html_missing', 'No HTML body was decoded. Try raw_mime recovery.');
+            source = Buffer.from(mail.html, 'utf8');
+          }
+          return {message: args.message, messageId: meta && meta.envelope?.messageId,
+            format: args.format, ...sourcePage(source, args.offset, args.limit, args.sourceSha256)};
+        });
+      }
       if (name === 'proton_read' || name === 'proton_read_attachment') {
         const args = tools[name].schema.parse(input);
         return this.selected(c, args.message, true, async () => {
@@ -170,9 +189,8 @@ export class MailService {
             if (file.size > MAX_ATTACHMENT) throw new PublicError('attachment_too_large', 'Attachment exceeds the 8 MiB limit.');
             return {filename: file.filename, contentType: file.contentType, size: file.size, base64: file.content.toString('base64')};
           }
-          const body = mail.text ?? '';
           return {message: args.message, subject: mail.subject, from: mail.from, to: mail.to, cc: mail.cc,
-            date: mail.date, messageId: mail.messageId, text: body.slice(0,64_000), truncated: body.length > 64_000,
+            date: mail.date, messageId: mail.messageId, ...extractBody(mail),
             attachments: mail.attachments.map((a,index) => ({index, filename: a.filename, contentType: a.contentType, size: a.size}))};
         });
       }

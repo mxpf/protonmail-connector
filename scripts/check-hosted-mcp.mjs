@@ -14,7 +14,10 @@ try {
   const prepare=result.tools.find(tool=>tool.name==='proton_prepare_send');
   const richTextSchema=Boolean(prepare?.inputSchema?.properties?.html);
   if (!richTextSchema) throw new Error('Hosted connector does not expose the rich-text composition field.');
+  const sourceRecovery=result.tools.find(tool=>tool.name==='proton_read_source');
+  if (!sourceRecovery?.annotations?.readOnlyHint || result.tools.length!==11)
+    throw new Error('Hosted connector does not expose read-only source recovery.');
   const status=await client.callTool({name:'proton_status',arguments:{}});
   if (status.isError) throw new Error('Connection check failed.');
-  console.log(JSON.stringify({mcpConnected:true,toolCount:result.tools.length,authenticated:true,richTextSchema}));
+  console.log(JSON.stringify({mcpConnected:true,toolCount:result.tools.length,authenticated:true,richTextSchema,sourceRecovery:true}));
 } finally {await client.close();}
