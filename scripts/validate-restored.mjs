@@ -55,6 +55,6 @@ export function validateRestored(directory) {
  }
  return {validationVersion:2,requiredComponentsPresent:true,configurationSchemasValid:true,requiredDatabaseSchemasValid:true,certificateParseable:true,keyStoreMaterialPresent:true,calendarCount,sqliteDatabasesChecked:databases,sqliteIntegrity:'ok',isolatedRestore:true,liveServiceFailoverTested:false};
 }
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+if(process.argv[1] && realpathSync(process.argv[1])===fileURLToPath(import.meta.url)) {
  try{console.log(JSON.stringify(validateRestored(process.argv[2])));}catch{console.error('Restored snapshot is incomplete, invalid or incompatible.');process.exitCode=1;}
 }

@@ -1,5 +1,5 @@
 // Bind every upload/resume to the immutable, checksum-verified download receipt.
-import {openSync,readSync,closeSync,mkdirSync,writeFileSync,readFileSync,existsSync,chmodSync,unlinkSync,renameSync} from 'node:fs';
+import {openSync,readSync,closeSync,mkdirSync,writeFileSync,readFileSync,existsSync,chmodSync,unlinkSync,renameSync,realpathSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {homedir} from 'node:os';
@@ -62,7 +62,7 @@ export function uploadArchive({archive,destination,cli,verifyOnly=false,onPart=(
   return {cloudBackupVerified:true,manifestPath,parts:plan.parts.length,bytes:plan.bytes,sha256:plan.sha256};
  }finally{closeSync(lock);unlinkSync(lockPath);}
 }
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+if(process.argv[1] && realpathSync(process.argv[1])===fileURLToPath(import.meta.url)) {
  try {
   const args=process.argv.slice(2),verifyOnly=args.includes('--verify-only'),positional=args.filter(a=>a!=='--verify-only');
   const [archive,destination,repo=join(homedir(),'Code/kdrive-connector')]=positional;

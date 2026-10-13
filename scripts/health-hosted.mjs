@@ -1,7 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {resolve} from 'node:path';
+import {realpathSync} from 'node:fs';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 const origin='https://mail-tools.pfennig.haus';
@@ -40,7 +40,7 @@ export async function checkHealth({fetcher=fetch,issue,revoke,sshCheck}) {
  try {checks.bridgeAndMcp=(await sshCheck()).authenticated===true;}catch{checks.bridgeAndMcp=false;}
  return {checkedAt:new Date().toISOString(),healthy:Object.values(checks).every(Boolean),checks};
 }
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+if(process.argv[1] && realpathSync(process.argv[1])===fileURLToPath(import.meta.url)) {
  const ssh=['-i',`${homedir()}/.ssh/protonmail_hetzner_ed25519`,'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10','-o','ServerAliveInterval=15','-o','ServerAliveCountMax=2','hausadmin@135.181.111.93'];
  const command='sudo -H -u protonconnector env PROTON_OAUTH_CONFIG=/var/lib/protonconnector/oauth-config.json PROTON_OAUTH_DB=/var/lib/protonconnector/oauth.sqlite /usr/local/bin/node /opt/protonmail-connector/current/scripts/health-probe-grant.mjs';
  const result=await checkHealth({

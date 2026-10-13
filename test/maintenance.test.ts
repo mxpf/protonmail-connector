@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
@@ -84,6 +85,21 @@ test('upload resumes only missing verified pieces and preserves original identit
 test('upload detects a file changed while a piece is being transferred',()=>{
  const root=temp();try{const f=uploadFixture(root);f.state.parts=[];f.state.completed=false;writeFileSync(f.archive+'.cloud.json',JSON.stringify(f.state));let calls=0;
  assert.throws(()=>uploadArchive({...f,cli:()=>{calls++;writeFileSync(f.archive,'zz');return {verified:true};}}));assert.equal(calls,1);assert.equal(JSON.parse(readFileSync(f.archive+'.cloud.json','utf8')).completed,false);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+test('maintenance grant CLI works through a deployment symlink and revokes its grant',async()=>{
+ const root=temp();try{
+  const config=write(root,'oauth-config.json',JSON.stringify(oauthConfig));
+  const database=join(root,'oauth.sqlite'),entry=join(root,'current-helper.mjs');
+  symlinkSync(fileURLToPath(new URL('../scripts/health-probe-grant.mjs',import.meta.url)),entry);
+  const env={...process.env,PROTON_OAUTH_CONFIG:config,PROTON_OAUTH_DB:database};
+  const grant=JSON.parse(execFileSync(process.execPath,[entry],{env,encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  assert.match(grant.access_token,/^[A-Za-z0-9_-]{43}$/);assert.equal(grant.expires_in,120);
+  const store=new OAuthStore(database),provider=new ProtonOAuth(oauthConfig,store);
+  try{assert.deepEqual((await provider.verifyAccessToken(grant.access_token)).scopes,[HEALTH_SCOPE]);
+   assert.deepEqual(JSON.parse(execFileSync(process.execPath,[entry,'--revoke'],{env,input:grant.access_token,encoding:'utf8',stdio:['pipe','pipe','pipe']})),{revoked:true});
+   await assert.rejects(provider.verifyAccessToken(grant.access_token));
+  }finally{store.close();}
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 test('HTTPS health uses restricted, expiring and revocable grants; detects HTTP-only failures',async()=>{

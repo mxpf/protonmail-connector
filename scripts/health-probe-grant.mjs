@@ -14,8 +14,8 @@ export function revokeProbe(store,token) {
  store.transaction(()=>{store.remove('family',grant.family);store.remove('access',token);});
 }
 import {fileURLToPath} from 'node:url';
-import {resolve} from 'node:path';
-if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+import {realpathSync} from 'node:fs';
+if(process.argv[1] && realpathSync(process.argv[1])===fileURLToPath(import.meta.url)) {
  let store;
  try {
   if(!process.env.PROTON_OAUTH_DB || !process.env.PROTON_OAUTH_CONFIG)throw Error();
