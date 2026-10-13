@@ -57,6 +57,10 @@ The October 13 maintenance release adds six tools, bringing hosted discovery to
 seventeen: forwarding previews, recoverable draft replacement, header-based thread
 lookup, and three read-only Calendar tools. SDK 1.31.0 resolves the dependency
 advisory. Type checking and all 31 tests passed before release preparation.
+Release `20261013-09` is deployed from `4393872c853290082a856dfb137317f1826d3fa7`.
+Hosted checks verified forwarding attachment hashes, recoverable draft replacement,
+six header-linked existing messages, all five calendars and aggregate availability.
+A synthetic 68-byte attachment passed independent kDrive readback verification.
 
 Five owner-approved calendars passed live feed checks. Historical body recovery
 coverage now spans nine distinct messages across the two acceptance sets. The

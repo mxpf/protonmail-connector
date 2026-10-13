@@ -13,6 +13,9 @@
   uncertain move returns the replacement identity: inspect it, never blindly retry.
 - `proton_thread` finds header-linked messages in the explicitly supplied folders.
   It does not guess by subject or claim complete account-wide conversation coverage.
+  Hosted verification grouped six existing messages in Sent and Inbox. Proton did
+  not retain the supplied reply headers on a synthetic draft; draft grouping is
+  therefore not guaranteed. This does not affect grouping existing retained headers.
 
 ## Calendar
 
@@ -99,6 +102,10 @@ HTTPS, OAuth metadata, rejection of unauthenticated MCP, authenticated MCP disco
 and Bridge IMAP/SMTP authentication. It reads no mail. It exits nonzero on failure.
 The Codex heartbeat owns the cadence, quiet-state behavior, backup freshness checks
 and notifications; it depends on Yantra and Codex being available.
+The configured schedule checks health hourly and takes a full encrypted backup
+with an isolated restore check on Sundays at 04:00 in the owner's local timezone.
+Normal successful runs stay quiet. Failures, recovery and overdue backups notify
+the owner. Keep at least four completed, restore-tested local snapshots.
 
 ## Dependency advisory
 
