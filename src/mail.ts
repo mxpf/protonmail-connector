@@ -3,7 +3,7 @@ import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import sanitizeHtml from 'sanitize-html';
 import {readFileSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID, createHash} from 'node:crypto';
 import {checkServerIdentity, type PeerCertificate} from 'node:tls';
 import {isIP} from 'node:net';
 import type {z} from 'zod';
@@ -11,6 +11,7 @@ import type {Config} from './config.js';
 import {SendLedger, type Prepared} from './send-ledger.js';
 import {extractBody, parseMail, sourcePage, MAX_MESSAGE} from './body.js';
 import {tools, composition, type MessageRef, type SearchInput, type ToolName, PublicError} from '../shared/protocol.js';
+import {CalendarReader} from './calendar/service.js';
 
 const MAX_ATTACHMENT = 8 * 1024 * 1024;
 const ALLOWED_RICH_TEXT_TAGS = ['p','br','strong','b','em','i','u','s','ul','ol','li','blockquote','a'] as const;
@@ -30,10 +31,14 @@ export function assertCurrentMailbox(client: Pick<ImapFlow, 'mailbox'>, ref: Mes
   if (!client.mailbox || client.mailbox.uidValidity.toString() !== ref.uidValidity)
     throw new PublicError('stale_reference', 'This mailbox changed. Search again before using the message.');
 }
+export function threadIds(value: string) {
+  return [...new Set(value.match(/<[^<>\s\r\n]{1,990}>/g) ?? [])];
+}
 
 export class MailService {
   private busy = false;
   private ledger: SendLedger;
+  private calendar?: CalendarReader;
   constructor(private config: Config, private createClient?: () => ImapFlow) {
     this.ledger = new SendLedger(config.ledgerPath);
   }
@@ -116,13 +121,34 @@ export class MailService {
       }));
     }
     const messageId = `<${randomUUID()}@${this.config.sender.split('@')[1]}>`;
+    const attachments: {filename: string; content: Buffer; contentType: string}[] = [];
+    let attachmentBytes = 0;
+    // Group references: one bounded, read-only download per source message.
+    const sources = new Map<string, typeof args.attachments>();
+    for (const item of args.attachments) {
+      const key = JSON.stringify(item.message);
+      sources.set(key, [...sources.get(key) ?? [], item]);
+    }
+    for (const items of sources.values()) {
+      const ref = items[0]!.message;
+      const parsed = await this.connected(c => this.selected(c, ref, true, () => this.parsed(c, ref)));
+      for (const item of items) {
+        const file = parsed.attachments[item.index];
+        if (!file) throw new PublicError('attachment_missing', 'A selected source attachment no longer exists.');
+        attachmentBytes += file.content.length;
+        if (attachmentBytes > MAX_ATTACHMENT) throw new PublicError('attachments_too_large', 'Combined attachments exceed the 8 MiB limit.');
+        attachments.push({filename: (file.filename ?? `attachment-${item.index + 1}`).replace(/[\\/\r\n\0]/g, '_').slice(0,200), content: file.content, contentType: file.contentType});
+      }
+    }
     const html = args.html === undefined ? undefined : sanitizeRichHtml(args.html);
     const mail = new MailComposer({from: this.config.sender, to: args.to, cc: args.cc, bcc: args.bcc,
       subject: args.subject, text: args.text, html, messageId, inReplyTo, references: inReplyTo,
-      keepBcc: draft, disableFileAccess: true, disableUrlAccess: true});
+      attachments, keepBcc: draft, disableFileAccess: true, disableUrlAccess: true});
     const raw = await mail.compile().build();
+    if (raw.length > MAX_MESSAGE) throw new PublicError('message_too_large', 'Composed message exceeds 12 MiB.');
     return {raw: raw.toString('base64'), envelope: {from: this.config.sender, to: [...new Set([...args.to, ...args.cc, ...args.bcc])]},
-      messageId, preview: {from: this.config.sender, ...args, html, messageId}};
+      messageId, preview: {from: this.config.sender, ...args, html, messageId,
+        attachmentPreview: attachments.map(a => ({filename:a.filename,contentType:a.contentType,size:a.content.length,sha256:createHash('sha256').update(a.content).digest('hex')}))}};
   }
   async execute(name: ToolName, input: unknown): Promise<unknown> {
     if (this.busy) throw new PublicError('busy', 'Another mail operation is running. Try again shortly.', 429);
@@ -130,6 +156,48 @@ export class MailService {
     try { return await this.run(name, input); } finally { this.busy = false; }
   }
   private async run(name: ToolName, input: unknown): Promise<unknown> {
+    if(name.startsWith('proton_calendar_')) {
+      const path=process.env.PROTON_CALENDAR_CONFIG;
+      if(!path) throw new PublicError('calendar_not_configured','Add Proton shared calendar links to the private calendar configuration before using calendar tools.');
+      try {this.calendar??=CalendarReader.fromFile(path);return await this.calendar.execute(name,tools[name].schema.parse(input));}
+      catch(error) {if(error instanceof PublicError)throw error;throw new PublicError('calendar_unavailable','Calendar configuration or feed could not be read. Check the private configuration; no partial availability is reported.');}
+    }
+    if (name === 'proton_prepare_forward') {
+      const args = tools.proton_prepare_forward.schema.parse(input);
+      const source = await this.connected(c => this.selected(c,args.message,true,()=>this.parsed(c,args.message)));
+      const body = extractBody(source);
+      if (body.body.incomplete || body.truncated) throw new PublicError('incomplete_forward', 'Source text is incomplete. Recover it before forwarding.');
+      const text = `${args.text}\n\n---------- Forwarded message ----------\nFrom: ${source.from?.text ?? ''}\nDate: ${source.date?.toISOString() ?? ''}\nSubject: ${source.subject ?? ''}\nTo: ${Array.isArray(source.to) ? source.to.map(v=>v.text).join(', ') : source.to?.text ?? ''}\n\n${body.text}`;
+      // Forward plain text only so the complete quote and preview agree.
+      if (args.html) throw new PublicError('forward_html_unsupported', 'Use plain text for the forward introduction.');
+      const mail = await this.compose(composition.parse({to:args.to,cc:args.cc,bcc:args.bcc,subject:args.subject,text,
+        attachments: args.includeAttachments ? source.attachments.map((_,index)=>({message:args.message,index})) : []}));
+      return this.ledger.prepare(mail);
+    }
+    if (name === 'proton_replace_draft') {
+      const args = tools.proton_replace_draft.schema.parse(input);
+      const mail = await this.compose(args.replacement,true);
+      return this.connected(async c => {
+        if (!c.capabilities.has('MOVE')) throw new PublicError('move_unavailable','Safe native MOVE is required.');
+        const boxes = await c.list();
+        const drafts = boxes.find(b=>b.specialUse==='\\Drafts'), trash = boxes.find(b=>b.specialUse==='\\Trash');
+        if (!drafts || args.message.mailbox !== drafts.path || !trash) throw new PublicError('not_draft','Select an exact message in the Drafts folder; Trash must exist.');
+        return this.selected(c,args.message,false,async()=>{
+          const original = await c.fetchOne(String(args.message.uid),{flags:true},{uid:true});
+          if (!original || !original.flags?.has('\\Draft')) throw new PublicError('not_draft','The source is no longer a draft.');
+          if (createHash('sha256').update(await this.raw(c,args.message)).digest('hex') !== args.expectedSourceSha256)
+            throw new PublicError('draft_changed','The draft changed. Read it again before editing.');
+          const created = await c.append(drafts.path,Buffer.from(mail.raw,'base64'),['\\Draft']);
+          if (!created || !created.uid || !created.uidValidity) throw new PublicError('draft_unconfirmed','Replacement creation is uncertain. Check Drafts; do not retry automatically.');
+          const replacement = {mailbox:drafts.path,uid:created.uid,uidValidity:String(created.uidValidity)};
+          try {
+            const moved = await c.messageMove(String(args.message.uid),trash.path,{uid:true});
+            if (!moved) return {status:'replacement_created_original_move_unconfirmed',replacement,messageId:mail.messageId,doNotRetry:true};
+            return {status:'replaced',replacement,messageId:mail.messageId,originalInTrash:{mailbox:trash.path,uid:moved.uidMap?.get(args.message.uid),uidValidity:moved.uidValidity?.toString()}};
+          } catch { return {status:'replacement_created_original_move_unconfirmed',replacement,messageId:mail.messageId,doNotRetry:true}; }
+        });
+      });
+    }
     if (name === 'proton_prepare_send') return this.ledger.prepare(await this.compose(composition.parse(input)));
     if (name === 'proton_send_prepared') {
       const {token} = tools.proton_send_prepared.schema.parse(input);
@@ -163,6 +231,30 @@ export class MailService {
         return (await c.list()).map(b => ({path: b.path, specialUse: b.specialUse, selectable: !b.flags.has('\\Noselect')}));
       }
       if (name === 'proton_search') return this.search(c, tools.proton_search.schema.parse(input));
+      if (name === 'proton_thread') {
+        const args = tools.proton_thread.schema.parse(input);
+        const seed = await this.selected(c,args.message,true,async()=>{
+          const m = await c.fetchOne(String(args.message.uid),{envelope:true,headers:['references','in-reply-to']},{uid:true});
+          if (!m) throw new PublicError('message_missing','Source missing.');
+          return threadIds(`${m.envelope?.messageId ?? ''} ${m.envelope?.inReplyTo ?? ''} ${m.headers?.toString() ?? ''}`);
+        });
+        if (!seed.length) throw new PublicError('thread_unavailable','Source has no usable threading headers.');
+        const ids = [...seed.slice(0,1),...seed.slice(-19)].filter((id,i,a)=>a.indexOf(id)===i);
+        const messages: unknown[] = []; let incomplete = seed.length > ids.length;
+        for (const mailbox of [...new Set(args.mailboxes)]) {
+          const lock = await c.getMailboxLock(mailbox,{readOnly:true});
+          try {
+            const hits = (await c.search({or:ids.flatMap(id=>['Message-ID','In-Reply-To','References'].map(header=>({header:{[header]:id}})))},{uid:true}) || []).sort((a,b)=>b-a);
+            const room = args.limit-messages.length;
+            if (hits.length>room) incomplete=true;
+            if (room>0 && hits.length) {
+              const rows = await c.fetchAll(hits.slice(0,room),{envelope:true,flags:true,size:true},{uid:true});
+              messages.push(...rows.map(m=>({message:{mailbox,uid:m.uid,uidValidity:c.mailbox ? String(c.mailbox.uidValidity) : ''},envelope:m.envelope,flags:[...m.flags ?? []],size:m.size})));
+            }
+          } finally {lock.release();}
+        }
+        return {messages,searchedMailboxes:[...new Set(args.mailboxes)],incomplete,method:'Message-ID/References/In-Reply-To header matching; no subject guessing'};
+      }
       if (name === 'proton_read_source') {
         const args = tools.proton_read_source.schema.parse(input);
         return this.selected(c, args.message, true, async () => {
@@ -181,7 +273,8 @@ export class MailService {
       if (name === 'proton_read' || name === 'proton_read_attachment') {
         const args = tools[name].schema.parse(input);
         return this.selected(c, args.message, true, async () => {
-          const mail = await this.parsed(c, args.message);
+          const raw = await this.raw(c, args.message);
+          const mail = await parseMail(raw).catch(()=>{throw new PublicError('body_parse_failed','MIME parsing failed. Use proton_read_source with raw_mime for bounded recovery.');});
           if (name === 'proton_read_attachment') {
             const {index} = tools.proton_read_attachment.schema.parse(input);
             const file = mail.attachments[index];
@@ -190,7 +283,7 @@ export class MailService {
             return {filename: file.filename, contentType: file.contentType, size: file.size, base64: file.content.toString('base64')};
           }
           return {message: args.message, subject: mail.subject, from: mail.from, to: mail.to, cc: mail.cc,
-            date: mail.date, messageId: mail.messageId, ...extractBody(mail),
+            date: mail.date, messageId: mail.messageId, sourceSha256:createHash('sha256').update(raw).digest('hex'), ...extractBody(mail),
             attachments: mail.attachments.map((a,index) => ({index, filename: a.filename, contentType: a.contentType, size: a.size}))};
         });
       }

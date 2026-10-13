@@ -9,16 +9,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "npm run build --silent && node --import tsx --test test/*.test.ts",
     "start": "node dist/src/server.js",
     "setup": "bash scripts/login-hosted-bridge.sh",
     "check:hosted": "node scripts/check-hosted-mcp.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@js-temporal/polyfill": "0.5.1",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "html-to-text": "10.0.1",
+    "ical.js": "2.2.1",
     "imapflow": "2.0.5",
     "mailparser": "3.9.28",
     "nodemailer": "^10.0.10",

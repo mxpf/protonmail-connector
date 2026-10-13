@@ -53,21 +53,21 @@ owner sign-in, consent, and authenticated tool discovery. Test phone access thro
 ordinary ChatGPT separately from an SSH or local Work task. A healthy Bridge
 connection does not by itself establish that the mobile OAuth flow works.
 
-The latest recorded release is `20261013-08`, built from source commit `f02fe61`.
-All 17 tests, type checking, and build passed. Hosted discovery found eleven tools,
-including read-only source recovery, and authenticated to Bridge. Five previously
-affected messages now return readable text through the public connector. Live
-checks also verified message identity and flags; the three primary regressions
-preserved attachment metadata and bytes, including a message with 19 inline images.
-Raw MIME pagination and decoded HTML recovery were verified on the hosted service.
-Only counts and verification results were recorded; no private correspondence is
-included in the repository or regression fixtures.
+The October 13 maintenance release adds six tools, bringing hosted discovery to
+seventeen: forwarding previews, recoverable draft replacement, header-based thread
+lookup, and three read-only Calendar tools. SDK 1.31.0 resolves the dependency
+advisory. Type checking and all 31 tests passed before release preparation.
 
-The previous release `20261008-07` remains available for rollback. Existing OAuth
-grants and rich-text composition are unchanged. Clients caching tool discovery may
-need a refresh to see `proton_read_source`; existing `proton_read` calls receive
-the body fix immediately. Phone UI completion remains unverified in this project's
-recorded checks. No messages were sent or mailbox flags changed during deployment.
+Five owner-approved calendars passed live feed checks. Historical body recovery
+coverage now spans nine distinct messages across the two acceptance sets. The
+original three byte-for-byte attachment regression checks remain separate evidence.
+An authorized self-send from the owner's Proton identity was confirmed in both Sent
+and Inbox. Detailed receipts and mail identities stay in private operator records.
+
+Retain release `20261013-08` for rollback. Existing OAuth grants are preserved.
+Clients caching tool discovery may need a refresh to see the new tools. The full
+phone sign-in and consent flow still requires confirmation in ordinary ChatGPT;
+SSH verification alone does not establish that phone flow.
 
 ## Privacy and operational limits
 
@@ -76,5 +76,7 @@ therefore expose mail and Bridge sessions; an unattended Pass/GPG store does not
 eliminate that threat. Mail content returned by tools is shared with the assistant
 service handling the request. GitHub is used only for identity verification.
 
-Off-host backups, restore testing, and external monitoring are not implemented
-in this deployment. No test email has been sent in the recorded setup checks.
+Maintenance additions include encrypted off-server snapshots, isolated data restore
+checks, outside-server health probes, and an authorized self-send verified in Sent
+and Inbox. See [maintenance procedures](../docs/maintenance.md) for setup, limits
+and the difference between data restore checks and live failover.

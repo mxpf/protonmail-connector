@@ -56,19 +56,20 @@ through the AI provider.
 
 - Hosted deployment is running; live checks verified folder listing, inbox search,
   and creating, reading, and moving a private test draft to Trash.
-- ChatGPT account linking and discovery of all ten tools were verified on desktop.
+- ChatGPT account linking was verified on desktop. Source now exposes 17 tools.
 - A mobile approval-session fix was deployed on September 22, 2026. A successful
   ordinary mobile chat test is not yet recorded in this project.
-- Seventeen automated tests cover MIME body recovery, paginated source recovery,
+- Twenty-nine automated tests cover MIME body recovery, paginated source recovery,
   message bounds, mutation safety, send replay,
   owner verification, consent/cookie binding, PKCE, token rotation/revocation,
-  and MCP protocol discovery. No live sending test has been performed here.
+  and MCP protocol discovery. A live self-send from max@pfennig.haus was accepted and located in both Sent and Inbox on October 13, 2026.
 
-Proton Calendar, forwarding with attachments, replacing existing drafts, thread
-aggregation, and direct kDrive transfers are not implemented. This is currently
-an owner-specific implementation, not a general multi-user service or a turnkey
-installer. Some deployment and issuer settings remain specific to the original
-installation.
+Forwarding with attachments, recoverable draft replacement, header-based conversation
+lookup, and read-only Proton Calendar feeds are implemented. Direct kDrive
+attachment transfers use the configured local executor. Calendar edits and invitations
+are not supported. See [maintenance workflows and limits](docs/maintenance.md).
+
+This is owner-specific software, not a general multi-user service or turnkey installer.
 
 ## Development
 

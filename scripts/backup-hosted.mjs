@@ -1,0 +1,24 @@
+import {spawn,execFileSync} from 'node:child_process';
+import {createReadStream,createWriteStream,mkdirSync,renameSync,writeFileSync,existsSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {homedir} from 'node:os';
+import {join,basename,resolve} from 'node:path';
+import {pipeline} from 'node:stream/promises';
+const destination=resolve(process.argv[2] || join(homedir(),'.local/share/proton-connector/backups'));
+mkdirSync(destination,{recursive:true,mode:0o700});
+const ssh=['-i',join(homedir(),'.ssh/protonmail_hetzner_ed25519'),'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10','hausadmin@135.181.111.93'];
+const remote=JSON.parse(execFileSync('ssh',[...ssh,'sudo /usr/local/sbin/proton-connector-backup'],{encoding:'utf8',timeout:600_000,maxBuffer:16384,stdio:['ignore','pipe','pipe']}));
+if(!/^\/var\/lib\/proton-backups\/proton-state-\d{8}T\d{6}Z\.tar\.gz\.age$/.test(remote.path) || !/^[a-f0-9]{64}$/.test(remote.sha256)) throw Error('Unexpected backup result');
+const output=join(destination,basename(remote.path));
+if(existsSync(output)) throw Error('Destination already exists');
+const child=spawn('ssh',[...ssh,`sudo cat ${remote.path}`],{stdio:['ignore','pipe','pipe']});
+const completed=new Promise((ok,bad)=>{child.once('error',bad);child.once('exit',code=>code===0?ok():bad(Error('Backup download failed')));});
+child.stderr.resume();
+await Promise.all([pipeline(child.stdout,createWriteStream(output+'.partial',{flags:'wx',mode:0o600})),completed]);
+const hash=createHash('sha256'); let bytes=0;
+for await(const chunk of createReadStream(output+'.partial')) {hash.update(chunk);bytes+=chunk.length;}
+if(bytes!==remote.bytes || hash.digest('hex')!==remote.sha256) throw Error('Encrypted backup checksum mismatch');
+renameSync(output+'.partial',output);
+const receipt={...remote,path:output,createdAt:new Date().toISOString(),offServerVerified:true,restoreVerified:false};
+writeFileSync(output+'.json',JSON.stringify(receipt,null,2)+'\n',{mode:0o600});
+console.log(JSON.stringify(receipt));

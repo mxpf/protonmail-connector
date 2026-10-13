@@ -12,7 +12,7 @@ test('MCP discovery, schema rejection and read/write annotations',async()=>{
   await server.connect(left); await client.connect(right);
   try {
     const listed=await client.listTools();
-    assert.equal(listed.tools.length,11);
+    assert.equal(listed.tools.length,17);
     assert.equal(listed.tools.find(t=>t.name==='proton_read')?.annotations?.readOnlyHint,true);
     assert.equal(listed.tools.find(t=>t.name==='proton_read_source')?.annotations?.readOnlyHint,true);
     assert.equal(listed.tools.find(t=>t.name==='proton_send_prepared')?.annotations?.readOnlyHint,false);
