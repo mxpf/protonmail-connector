@@ -53,15 +53,21 @@ owner sign-in, consent, and authenticated tool discovery. Test phone access thro
 ordinary ChatGPT separately from an SSH or local Work task. A healthy Bridge
 connection does not by itself establish that the mobile OAuth flow works.
 
-The latest recorded release is `20261008-07`: all ten tests, type checking, and
-build passed; hosted discovery found ten tools, the rich-text composition field,
-and a healthy Bridge connection. Draft and send composition now accepts optional
-sanitized HTML alongside the required plain-text fallback, producing a multipart
-alternative message. Only basic email-safe formatting and links are retained;
-scripts, images, tracking content, custom styles, and unsafe URLs are removed.
-The previous release `20260922-06` remains available for rollback. Existing OAuth
-grants are unaffected. Phone completion remains unverified in this project's
-recorded checks.
+The latest recorded release is `20261013-08`, built from source commit `f02fe61`.
+All 17 tests, type checking, and build passed. Hosted discovery found eleven tools,
+including read-only source recovery, and authenticated to Bridge. Five previously
+affected messages now return readable text through the public connector. Live
+checks also verified message identity and flags; the three primary regressions
+preserved attachment metadata and bytes, including a message with 19 inline images.
+Raw MIME pagination and decoded HTML recovery were verified on the hosted service.
+Only counts and verification results were recorded; no private correspondence is
+included in the repository or regression fixtures.
+
+The previous release `20261008-07` remains available for rollback. Existing OAuth
+grants and rich-text composition are unchanged. Clients caching tool discovery may
+need a refresh to see `proton_read_source`; existing `proton_read` calls receive
+the body fix immediately. Phone UI completion remains unverified in this project's
+recorded checks. No messages were sent or mailbox flags changed during deployment.
 
 ## Privacy and operational limits
 
