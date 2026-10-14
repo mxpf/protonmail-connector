@@ -1,0 +1,23 @@
+[Unit]
+Description=Proton connector independent email health alerts
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+User=protonconnector
+Group=protonconnector
+Environment=HOME=/var/lib/protonconnector
+Environment=PROTON_MONITOR_SCHEDULER=systemd
+Environment=PROTON_CONFIG=/var/lib/protonconnector/config.json
+Environment=PROTON_OAUTH_CONFIG=/var/lib/protonconnector/oauth-config.json
+Environment=PROTON_OAUTH_DB=/var/lib/protonconnector/oauth.sqlite
+Environment=PROTON_CALENDAR_CONFIG=/var/lib/protonconnector/calendar-config.json
+ExecStart=/usr/local/bin/node /opt/proton-connector-monitor/current/scripts/email-monitor.mjs /var/lib/protonconnector/email-alerts.json
+TimeoutStartSec=290
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/protonconnector
+LimitCORE=0

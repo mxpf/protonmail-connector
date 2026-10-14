@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Proton connector every five minutes independently of Codex
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+AccuracySec=15s
+Unit=proton-email-monitor.service
+[Install]
+WantedBy=timers.target
