@@ -101,3 +101,30 @@ automatic failover or a regional/provider outage. Fresh Proton authentication ma
 require the owner's additional code; clients created after an archive may need to
 sign in again. The existing state archives predate monitoring, so that configuration
 was restored from separately protected off-server records and monitor source.
+
+## Free recovery improvements
+
+`proton-self-heal.timer` probes every two minutes on the existing host. It confirms
+a local HTTP or Bridge failure twice before restarting the affected services,
+allows at most two repair attempts per hour, and records the budget before action.
+It leaves intentionally stopped services alone, respects backup/login locks and
+`/run/proton-connector-maintenance`, and never changes credentials, provisions
+resources, restores old data, sends mail or pings the external watchdog. Existing
+independent monitoring continues to report unresolved failures. Stop this timer
+and set the maintenance marker before planned service changes.
+
+For manual disaster recovery, run `scripts/prepare-recovery.py` with the encrypted
+archive, off-server key and a NEW private staging directory. It binds the bytes
+to the original verified download and passing v2 restore receipts, decrypts with
+authentication, safely extracts, validates all required state again and writes a
+receipt. It refuses existing destinations and removes incomplete staging after
+failure. It does not start the archived Bridge session or overwrite the live host.
+Remove the plaintext staging directory after use. Continue the cold-restore and
+cutover steps above; a replacement host and owner authentication may still be needed.
+
+New backups include the hosted kDrive configuration and journals, monitoring and
+self-heal service definitions, repair state, and the kDrive source revision when
+installed. Older archives still need those later components recovered separately.
+Reinstall both code revisions and dependencies before starting recovered services.
+The current hosted monitor can use the connector release directly, so it does not
+need a separate monitor code tree.

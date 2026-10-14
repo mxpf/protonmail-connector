@@ -1,0 +1,8 @@
+[Unit]
+Description=Check for stuck Proton services every two minutes
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=2min
+AccuracySec=10s
+[Install]
+WantedBy=timers.target

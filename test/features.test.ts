@@ -15,7 +15,7 @@ function fixture() {
   capabilities:new Map([['MOVE',true]]),mailbox:{uidValidity:validity},
   connect:async()=>{},close:()=>{},getMailboxLock:async()=>({release:()=>{}}),
   list:async()=>[{path:'Drafts',specialUse:'\\Drafts'},{path:'Trash',specialUse:'\\Trash'}],
-  fetchOne:async()=>({uid:7,size:source.length,flags:new Set(['\\Draft']),envelope:{messageId:'<source@example.com>'}}),
+  fetchOne:async()=>({uid:7,size:source.length,flags:new Set(['\\Draft']),envelope:{messageId:'<source@example.com>'},headers:Buffer.from('References: <root@example.com> <parent@example.com>\r\n\r\n')}),
   download:async()=>({content:Readable.from([source])}),
   append:async(_path:string,raw:Buffer)=>{appended=Buffer.from(raw);return {uid:8,uidValidity:99n};},
   messageMove:async()=>{if(failMove)throw Error('network failed');moved=true;return {uidValidity:98n,uidMap:new Map([[7,9]])};},
@@ -75,4 +75,29 @@ test('busy calendar redacts event fields and rejects text search',async()=>{
  const a={calendarId:'test',start:'2026-10-13T00:00:00Z',end:'2026-10-15T00:00:00Z'};
  const r=await c.execute('proton_calendar_events',a) as any;assert.equal(r.events[0].title,'Busy');
  await assert.rejects(c.execute('proton_calendar_events',{...a,query:'test'}),/busy-only/);
+});
+
+test('reply composition retains ancestor References and exact immediate parent',async()=>{
+ const f=fixture();try {
+  await f.service.execute('proton_create_draft',{to:['owner@example.com'],subject:'Re: Source',text:'Reply',replyToMessage:ref});
+  const mail=await simpleParser(f.appended!);
+  assert.equal(mail.inReplyTo,'<source@example.com>');
+  assert.deepEqual(mail.references,['<root@example.com>','<parent@example.com>','<source@example.com>']);
+ }finally{f.service.close()}
+});
+
+test('draft reply readback distinguishes retained, stripped and unavailable headers without duplicate append',async()=>{
+ for(const mode of ['retained','stripped','unavailable']){
+  const f=fixture();const original=f.fake.fetchOne;let appends=0;const append=f.fake.append;
+  f.fake.append=async(...a:any[])=>{appends++;return (append as any)(...a)};
+  f.fake.fetchOne=(async(uid:string)=>{
+   if(uid!=='8')return original();
+   if(mode==='unavailable')throw Error('Readback failed');
+   return {uid:8,headers:Buffer.from(mode==='retained'?'In-Reply-To: <source@example.com>\r\nReferences: <root@example.com> <parent@example.com> <source@example.com>\r\n\r\n':'\r\n')};
+  }) as any;
+  try{const result=await f.service.execute('proton_create_draft',{to:['owner@example.com'],subject:'Re: Source',text:'Reply',replyToMessage:ref}) as any;
+   assert.equal(result.status,'created');assert.equal(appends,1);
+   assert.equal(result.replyThreading.headersRetained,mode==='retained'?true:mode==='stripped'?false:null);
+  }finally{f.service.close()}
+ }
 });

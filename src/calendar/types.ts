@@ -17,4 +17,4 @@ export type CalendarEvent = {
 };
 export type Snapshot = { events: CalendarEvent[]; fetchedAt: string; snapshotId: string };
 export const FRESHNESS_WARNING =
-  'Proton shared links may lag changes by up to eight hours. Results cover only configured shared calendars and are not a booking guarantee.';
+  'Proton shared links may lag changes by up to eight hours. fetchedAt is the download time, not proof of current calendar contents. Results cover only configured shared calendars and are not a booking guarantee. For current changes or creating/editing events, open https://calendar.proton.me.';

@@ -1,0 +1,11 @@
+[Unit]
+Description=Bounded Proton same-host service recovery
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/protonmail-connector/current/scripts/self-heal.py
+TimeoutStartSec=380
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+LimitCORE=0

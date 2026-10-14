@@ -15,7 +15,11 @@
   It does not guess by subject or claim complete account-wide conversation coverage.
   Hosted verification grouped six existing messages in Sent and Inbox. Proton did
   not retain the supplied reply headers on a synthetic draft; draft grouping is
-  therefore not guaranteed. This does not affect grouping existing retained headers.
+  therefore not guaranteed. Replies now preserve a bounded References ancestry,
+and draft creation/replacement reads headers back and reports whether Proton
+retained them. A failed readback never retries draft creation. Use Reply in Proton
+Mail when native conversation placement matters. This does not affect grouping
+existing retained headers.
 
 ## Calendar
 
@@ -23,6 +27,9 @@ Calendar support reuses the owner's September 24, 2026 Calendar implementation:
 the bounded ICS fetcher, isolated recurrence parser, timezone handling and tests.
 The mail connector exposes list, event search and provisional availability tools.
 It does not edit Proton Calendar or send invitations. Shared feeds can lag changes.
+For immediate changes or event creation/editing, use the signed-in Proton Calendar
+website at https://calendar.proton.me. Tool responses include this fallback and
+clarify that fetchedAt is a download time, not a guarantee of up-to-date contents.
 Unsupported recurrence/timezone data fails closed rather than reporting free time.
 Detached recurrence instances retain their explicit occurrence times; a missing
 series is never invented. Attendee metadata is not returned. A malformed attendee
@@ -58,8 +65,15 @@ The destination is explicitly supplied, not derived from an email filename. The
 local snapshot is private and removed after use; bytes and credentials never enter
 the model context. kDrive independently downloads and checks the uploaded digest.
 An existing destination is not overwritten. An ambiguous upload must be inspected
-through its saved kDrive receipt before retrying. This workflow requires Yantra (or
-another configured local executor); it is not a new cloud-to-cloud MCP action.
+through its saved kDrive receipt before retrying. The legacy script requires Yantra. The hosted `proton_save_attachment_to_kdrive`
+action now performs the transfer on the existing server without Yantra. It accepts
+an exact message, attachment index, destination under `/Private/`, and a UUID
+operationId. Reuse that ID for retries. Durable reservations prevent repeated or
+uncertain uploads; existing destinations are never overwritten. The server keeps
+private receipts and verifies the downloaded bytes against the source digest.
+Configure `PROTON_KDRIVE_CONFIG` with a private JSON file containing repository,
+stateDirectory, driveId and accessToken. No credentials or attachment bytes are
+returned through the hosted save action.
 
 ## Encrypted off-server backups and restore checks
 

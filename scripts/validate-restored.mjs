@@ -7,6 +7,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {loadConfig} from '../dist/src/config.js';
 import {loadOAuthConfig} from '../dist/src/oauth.js';
 import {loadConfig as loadCalendarConfig} from '../dist/src/calendar/config.js';
+import {kdriveConfigSchema} from '../dist/src/kdrive.js';
 export function validateRestored(directory) {
  const root=realpathSync(directory);
  const inside=p=>{const real=realpathSync(p);if(!real.startsWith(root+sep))throw Error('Restored path escapes snapshot');return real;};
@@ -24,6 +25,11 @@ export function validateRestored(directory) {
   loadOAuthConfig(file(environment.PROTON_OAUTH_CONFIG));
   new X509Certificate(readFileSync(file(config.certificatePath)));
   if(environment.PROTON_CALENDAR_CONFIG)calendarCount=loadCalendarConfig(file(environment.PROTON_CALENDAR_CONFIG)).calendars.length;
+  if(environment.PROTON_KDRIVE_CONFIG) {
+   const kdrivePath=file(environment.PROTON_KDRIVE_CONFIG);
+   if(statSync(kdrivePath).mode&0o077)throw Error('Private kDrive configuration required');
+   kdriveConfigSchema.parse(JSON.parse(readFileSync(kdrivePath,'utf8')));
+  }
  }catch{throw Error('Required restored configuration or certificate is invalid');}
  const requiredDatabases=[
   [file(environment.PROTON_OAUTH_DB),'oauth_records',{kind:['TEXT',1],key:['TEXT',2],value:['TEXT',0],expires:['INTEGER',0]}],

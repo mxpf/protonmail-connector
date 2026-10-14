@@ -23,10 +23,16 @@ chmod 700 /var/lib/proton-backups
 # Freeze both writers only while copying. Encryption/compression runs after restart.
 systemctl stop proton-mail-connector
 systemctl stop proton-bridge
+extras=()
+for item in etc/systemd/system/proton-email-monitor.service etc/systemd/system/proton-email-monitor.timer \
+  etc/systemd/system/proton-self-heal.service etc/systemd/system/proton-self-heal.timer \
+  var/lib/proton-self-heal opt/kdrive-transfer/current/REVISION; do
+  if test -e "/$item"; then extras+=("$item"); fi
+done
 tar -C / --exclude='S.gpg-agent*' --exclude='S.dirmngr' --exclude='*.sock' -cf - \
   var/lib/protonconnector var/lib/protonbridge \
   etc/caddy/Caddyfile etc/systemd/system/proton-mail-connector.service \
-  etc/systemd/system/proton-bridge.service opt/protonmail-connector/current/REVISION \
+  etc/systemd/system/proton-bridge.service opt/protonmail-connector/current/REVISION "${extras[@]}" \
   | tar -C "$work/snapshot" -xf -
 resume
 connector_active=false

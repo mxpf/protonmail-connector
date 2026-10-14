@@ -8,7 +8,7 @@ export class CalendarReader {
   constructor(private config:ReturnType<typeof loadConfig>,fetcher:typeof fetch=fetch) {this.feeds=new Feeds(config.cacheSeconds,fetcher);}
   static fromFile(path:string) {return new CalendarReader(loadConfig(path));}
   async execute(name:string,input:unknown):Promise<unknown> {
-    if(name==='proton_calendar_list') return {calendars:this.config.calendars.map(({id,name,timezone,visibility})=>({id,name,timezone,visibility,readOnly:true})),warning:FRESHNESS_WARNING,directProtonWrites:false};
+    if(name==='proton_calendar_list') return {calendars:this.config.calendars.map(({id,name,timezone,visibility})=>({id,name,timezone,visibility,readOnly:true})),warning:FRESHNESS_WARNING,directProtonWrites:false,manageUrl:'https://calendar.proton.me'};
     if(name==='proton_calendar_events') {
       const a=eventsSchema.parse(input);windowSchema.parse(a);
       const c=this.config.calendars.find(c=>c.id===a.calendarId);

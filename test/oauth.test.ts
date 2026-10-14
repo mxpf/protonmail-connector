@@ -120,7 +120,7 @@ test('slow owner sign-in gets fresh cookie-bound consent, then PKCE and authenti
     assert.equal((await exchange(verifier)).status,400);
     const transport=new StreamableHTTPClientTransport(new URL(base+'/mcp'),{fetch:localFetch,requestInit:{headers:{Host:'mail-tools.pfennig.haus',Authorization:`Bearer ${tokens.access_token}`}}});
     const mcp=new Client({name:'test',version:'1'});await mcp.connect(transport);
-    assert.equal((await mcp.listTools()).tools.length,17);
+    assert.equal((await mcp.listTools()).tools.length,18);
     await mcp.callTool({name:'proton_status',arguments:{}});assert.equal(mailCalls,1);
     await mcp.close();
     await provider.revokeToken(client,{token:tokens.access_token});

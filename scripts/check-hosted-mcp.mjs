@@ -6,6 +6,7 @@ const transport = new StdioClientTransport({command:'ssh',args:[
   '-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10','hausadmin@135.181.111.93',
   'sudo','-H','-u','protonconnector','env','PROTON_CONFIG=/var/lib/protonconnector/config.json',
   'PROTON_CALENDAR_CONFIG=/var/lib/protonconnector/calendar-config.json',
+  'PROTON_KDRIVE_CONFIG=/var/lib/protonconnector/kdrive-config.json',
   '/usr/local/bin/node','/opt/protonmail-connector/current/dist/src/server.js',
 ],stderr:'pipe'});
 const client=new Client({name:'hosted-proton-check',version:'0.1.0'});
@@ -16,7 +17,7 @@ try {
   const richTextSchema=Boolean(prepare?.inputSchema?.properties?.html);
   if (!richTextSchema) throw new Error('Hosted connector does not expose the rich-text composition field.');
   const sourceRecovery=result.tools.find(tool=>tool.name==='proton_read_source');
-  if (!sourceRecovery?.annotations?.readOnlyHint || result.tools.length!==17)
+  if (!sourceRecovery?.annotations?.readOnlyHint || result.tools.length!==18)
     throw new Error('Hosted connector does not expose read-only source recovery.');
   const status=await client.callTool({name:'proton_status',arguments:{}});
   if (status.isError) throw new Error('Connection check failed.');

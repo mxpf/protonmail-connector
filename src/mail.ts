@@ -12,6 +12,7 @@ import {SendLedger, type Prepared} from './send-ledger.js';
 import {extractBody, parseMail, sourcePage, MAX_MESSAGE} from './body.js';
 import {tools, composition, type MessageRef, type SearchInput, type ToolName, PublicError} from '../shared/protocol.js';
 import {CalendarReader} from './calendar/service.js';
+import {saveAttachmentToKdrive} from './kdrive.js';
 
 const MAX_ATTACHMENT = 8 * 1024 * 1024;
 const ALLOWED_RICH_TEXT_TAGS = ['p','br','strong','b','em','i','u','s','ul','ol','li','blockquote','a'] as const;
@@ -111,14 +112,20 @@ export class MailService {
   }
   private async compose(args: z.infer<typeof composition>, draft = false): Promise<Prepared> {
     let inReplyTo: string | undefined;
+    let references: string[] | undefined;
     if (args.replyToMessage) {
       const ref = args.replyToMessage;
-      inReplyTo = await this.connected(c => this.selected(c, ref, true, async () => {
-        const source = await c.fetchOne(String(ref.uid), {envelope: true}, {uid: true});
+      const reply = await this.connected(c => this.selected(c, ref, true, async () => {
+        const source = await c.fetchOne(String(ref.uid), {envelope: true, headers: ['references','in-reply-to']}, {uid: true});
         const id = source && source.envelope?.messageId;
         if (!id || !/^<[^<>\s\r\n]{1,990}>$/.test(id)) throw new PublicError('invalid_reply_source', 'Source has no usable Message-ID.');
-        return id;
+        const parsed = await parseMail(source && source.headers ? source.headers : Buffer.alloc(0));
+        const ancestors = threadIds([parsed.references ?? parsed.inReplyTo ?? ''].flat().join(' '));
+        // Retain the root and recent ancestry while bounding untrusted header size.
+        const chain = [...new Set([...ancestors, id])];
+        return {id, references: chain.length > 20 ? [chain[0]!, ...chain.slice(-19)] : chain};
       }));
+      inReplyTo = reply.id; references = reply.references;
     }
     const messageId = `<${randomUUID()}@${this.config.sender.split('@')[1]}>`;
     const attachments: {filename: string; content: Buffer; contentType: string}[] = [];
@@ -142,13 +149,26 @@ export class MailService {
     }
     const html = args.html === undefined ? undefined : sanitizeRichHtml(args.html);
     const mail = new MailComposer({from: this.config.sender, to: args.to, cc: args.cc, bcc: args.bcc,
-      subject: args.subject, text: args.text, html, messageId, inReplyTo, references: inReplyTo,
+      subject: args.subject, text: args.text, html, messageId, inReplyTo, references,
       attachments, keepBcc: draft, disableFileAccess: true, disableUrlAccess: true});
     const raw = await mail.compile().build();
     if (raw.length > MAX_MESSAGE) throw new PublicError('message_too_large', 'Composed message exceeds 12 MiB.');
     return {raw: raw.toString('base64'), envelope: {from: this.config.sender, to: [...new Set([...args.to, ...args.cc, ...args.bcc])]},
-      messageId, preview: {from: this.config.sender, ...args, html, messageId,
+      messageId, preview: {from: this.config.sender, ...args, html, messageId, inReplyTo, references,
         attachmentPreview: attachments.map(a => ({filename:a.filename,contentType:a.contentType,size:a.content.length,sha256:createHash('sha256').update(a.content).digest('hex')}))}};
+  }
+  private async verifyDraftReply(c: ImapFlow, uid:number|undefined, mail:Prepared) {
+    const expected=(mail.preview as {inReplyTo?:string;references?:string[]});
+    if(!expected.inReplyTo)return undefined;
+    try {
+      if(!uid)throw Error('Missing draft reference');
+      const result=await c.fetchOne(String(uid),{envelope:true,headers:['references','in-reply-to']},{uid:true});
+      if(!result)throw Error('Draft readback unavailable');
+      const parsed=await parseMail(result.headers??Buffer.alloc(0));
+      const ids=threadIds([parsed.references??''].flat().join(' '));
+      const retained=(parsed.inReplyTo??result.envelope?.inReplyTo)===expected.inReplyTo&&(expected.references??[]).every(id=>ids.includes(id));
+      return {headersRetained:retained,warning:retained?undefined:'Proton did not retain the requested reply headers. This draft may appear outside the conversation. Use Reply in https://mail.proton.me when thread placement matters.'};
+    } catch {return {headersRetained:null,warning:'Draft created, but reply threading could not be verified. Inspect it in https://mail.proton.me; do not create another copy.'};}
   }
   async execute(name: ToolName, input: unknown): Promise<unknown> {
     if (this.busy) throw new PublicError('busy', 'Another mail operation is running. Try again shortly.', 429);
@@ -156,6 +176,16 @@ export class MailService {
     try { return await this.run(name, input); } finally { this.busy = false; }
   }
   private async run(name: ToolName, input: unknown): Promise<unknown> {
+    if (name === 'proton_save_attachment_to_kdrive') {
+      const args = tools.proton_save_attachment_to_kdrive.schema.parse(input);
+      return saveAttachmentToKdrive(args, async () => this.connected(c => this.selected(c,args.message,true,async()=>{
+        const mail = await this.parsed(c,args.message);
+        const attachment = mail.attachments[args.index];
+        if (!attachment) throw new PublicError('attachment_missing','Attachment index does not exist.');
+        if (attachment.content.length > MAX_ATTACHMENT) throw new PublicError('attachment_too_large','Attachment exceeds the 8 MiB limit.');
+        return attachment.content;
+      })));
+    }
     if(name.startsWith('proton_calendar_')) {
       const path=process.env.PROTON_CALENDAR_CONFIG;
       if(!path) throw new PublicError('calendar_not_configured','Add Proton shared calendar links to the private calendar configuration before using calendar tools.');
@@ -190,11 +220,12 @@ export class MailService {
           const created = await c.append(drafts.path,Buffer.from(mail.raw,'base64'),['\\Draft']);
           if (!created || !created.uid || !created.uidValidity) throw new PublicError('draft_unconfirmed','Replacement creation is uncertain. Check Drafts; do not retry automatically.');
           const replacement = {mailbox:drafts.path,uid:created.uid,uidValidity:String(created.uidValidity)};
+          const replyThreading = await this.verifyDraftReply(c,created.uid,mail);
           try {
             const moved = await c.messageMove(String(args.message.uid),trash.path,{uid:true});
-            if (!moved) return {status:'replacement_created_original_move_unconfirmed',replacement,messageId:mail.messageId,doNotRetry:true};
-            return {status:'replaced',replacement,messageId:mail.messageId,originalInTrash:{mailbox:trash.path,uid:moved.uidMap?.get(args.message.uid),uidValidity:moved.uidValidity?.toString()}};
-          } catch { return {status:'replacement_created_original_move_unconfirmed',replacement,messageId:mail.messageId,doNotRetry:true}; }
+            if (!moved) return {status:'replacement_created_original_move_unconfirmed',replacement,messageId:mail.messageId,replyThreading,doNotRetry:true};
+            return {status:'replaced',replacement,messageId:mail.messageId,replyThreading,originalInTrash:{mailbox:trash.path,uid:moved.uidMap?.get(args.message.uid),uidValidity:moved.uidValidity?.toString()}};
+          } catch { return {status:'replacement_created_original_move_unconfirmed',replacement,messageId:mail.messageId,replyThreading,doNotRetry:true}; }
         });
       });
     }
@@ -216,7 +247,12 @@ export class MailService {
         if (!drafts) throw new PublicError('drafts_missing', 'No Drafts folder was identified.');
         const result = await c.append(drafts.path, Buffer.from(mail.raw, 'base64'), ['\\Draft']);
         if (!result) throw new PublicError('draft_unconfirmed', 'Draft creation was not confirmed. Check Drafts before trying again.');
-        return {status: 'created', messageId: mail.messageId, mailbox: drafts.path, uid: result.uid, uidValidity: result.uidValidity?.toString()};
+        let replyThreading;
+        if((mail.preview as {inReplyTo?:string}).inReplyTo) {
+          try {const lock=await c.getMailboxLock(drafts.path,{readOnly:true});try{replyThreading=await this.verifyDraftReply(c,result.uid,mail);}finally{lock.release();}}
+          catch {replyThreading={headersRetained:null,warning:'Draft created; threading readback unavailable. Do not create another copy.'};}
+        }
+        return {status: 'created', messageId: mail.messageId, mailbox: drafts.path, uid: result.uid, uidValidity: result.uidValidity?.toString(),replyThreading};
       });
     }
     return this.connected(async c => {
