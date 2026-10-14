@@ -74,8 +74,7 @@ HTTPS health probe. Regression coverage includes incomplete restores, truncated
 uploads, HTTP-only outages and denial of all other tools to health credentials.
 
 Retain release `20261013-09` for rollback. Existing OAuth grants are preserved.
-Clients caching tool discovery may need a refresh to see the new tools. The full
-phone sign-in and consent flow still requires confirmation in ordinary ChatGPT;
+Clients caching tool discovery may need a refresh to see the new tools. The phone sign-in and consent flow was subsequently confirmed by the owner.
 SSH verification alone does not establish that phone flow.
 
 ## Privacy and operational limits
@@ -89,3 +88,18 @@ Maintenance additions include encrypted off-server snapshots, isolated data rest
 checks, outside-server health probes, and an authorized self-send verified in Sent
 and Inbox. See [maintenance procedures](../docs/maintenance.md) for setup, limits
 and the difference between data restore checks and live failover.
+
+## Current free-improvement release
+
+Release `20261013-13` adds hosted attachment saving to the existing server and
+keeps health checks available during transfers. ChatGPT discovery was refreshed
+and verified with 18 tools. Synthetic hosted transfer and duplicate protection,
+reply-header readback, five-calendar listing and all seven public health checks
+passed. The OS-scheduled bounded service recovery passed a frozen-process drill.
+The owner confirmed an Android lock-screen alert after checking phone settings.
+A new encrypted off-server archive includes monitoring and transfer configuration
+and passed v2 validation plus offline recovery preparation; plaintext was removed.
+
+No additional recurring cost was added. Full host replacement remains manual.
+Proton still strips reply draft headers and shared calendar exports remain delayed
+and read-only; tool responses now explain these limits and the browser fallbacks.

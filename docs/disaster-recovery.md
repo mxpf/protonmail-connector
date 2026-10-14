@@ -57,7 +57,7 @@ recovery is a required step.
 
 With the original host off, verify public DNS/routing, trusted HTTPS, OAuth
 metadata, unauthenticated rejection, authenticated MCP initialization and status,
-all seventeen application tools, and all five configured calendars. Revoke the
+all application tools (currently eighteen), and all five configured calendars. Revoke the
 restricted health grant and verify subsequent HTTPS rejection. Record which
 machine served the requests. Restoring an older OAuth database can require clients
 whose grants were issued after the snapshot to sign in again.
