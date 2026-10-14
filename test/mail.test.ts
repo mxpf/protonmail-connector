@@ -11,6 +11,18 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const ref = {mailbox:'INBOX',uid:7,uidValidity:'99'};
+test('health remains available during a slow operation without unlocking concurrent writes',async()=>{
+ const service=new MailService({username:'owner@example.com',sender:'owner@example.com',password:'fake',certificatePath:'/unused',tlsServerName:'localhost',imapPort:1143,smtpPort:1025,ledgerPath:':memory:'});
+ let finish!:()=>void;
+ const pending=new Promise<void>(resolve=>{finish=resolve});
+ (service as any).run=async(name:string)=>name==='proton_status'?{connected:true}:pending;
+ try{
+  const operation=service.execute('proton_save_attachment_to_kdrive',{});
+  assert.deepEqual(await service.execute('proton_status',{}),{connected:true});
+  await assert.rejects(service.execute('proton_set_flags',{}),/Another mail operation/);
+  finish();await operation;
+ }finally{finish();service.close();}
+});
 test('message reads use readonly lock and bounded UID download; stale IDs cannot mutate', async()=>{
   const calls: unknown[]=[];
   let validity=99n;

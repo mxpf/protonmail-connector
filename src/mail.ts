@@ -171,6 +171,9 @@ export class MailService {
     } catch {return {headersRetained:null,warning:'Draft created, but reply threading could not be verified. Inspect it in https://mail.proton.me; do not create another copy.'};}
   }
   async execute(name: ToolName, input: unknown): Promise<unknown> {
+    // Health authentication uses its own connections and must not mistake a slow
+    // attachment upload for an outage or release the active operation's lock.
+    if(name==='proton_status')return this.run(name,input);
     if (this.busy) throw new PublicError('busy', 'Another mail operation is running. Try again shortly.', 429);
     this.busy = true;
     try { return await this.run(name, input); } finally { this.busy = false; }
