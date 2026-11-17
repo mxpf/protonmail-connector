@@ -8,7 +8,8 @@ import {MailService} from './mail.js';
 import {tools, instructions, PublicError, type ToolName, MAX_RESPONSE_BYTES} from '../shared/protocol.js';
 
 export function createServer(service: Pick<MailService, 'execute'>, allowedTools?: readonly ToolName[]) {
-  const server = new McpServer({name:'proton-mail-connector',version:'0.1.0'}, {instructions});
+  // Allow all 50 attachment references and 75 recipients in a single composition.
+  const server = new McpServer({name:'proton-mail-connector',version:'0.1.0'}, {instructions,maxToolInputElements:512});
   const reads = new Set(['proton_status','proton_list_mailboxes','proton_search','proton_thread','proton_read','proton_read_source','proton_read_attachment']);
   for (const name of Object.keys(tools) as ToolName[]) {
     if (allowedTools && !allowedTools.includes(name)) continue;

@@ -77,9 +77,10 @@ test('busy calendar redacts event fields and rejects text search',async()=>{
  await assert.rejects(c.execute('proton_calendar_events',{...a,query:'test'}),/busy-only/);
 });
 
-test('reply composition retains ancestor References and exact immediate parent',async()=>{
+test('reply drafts retain Bcc, ancestor References, and the exact immediate parent',async()=>{
  const f=fixture();try {
-  await f.service.execute('proton_create_draft',{to:['owner@example.com'],subject:'Re: Source',text:'Reply',replyToMessage:ref});
+  await f.service.execute('proton_create_draft',{to:['owner@example.com'],bcc:['blind@example.com'],subject:'Re: Source',text:'Reply',replyToMessage:ref});
+  assert.match(f.appended!.toString(),/^Bcc: blind@example\.com\r?$/mi);
   const mail=await simpleParser(f.appended!);
   assert.equal(mail.inReplyTo,'<source@example.com>');
   assert.deepEqual(mail.references,['<root@example.com>','<parent@example.com>','<source@example.com>']);

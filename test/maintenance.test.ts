@@ -8,6 +8,8 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {request} from 'node:http';
+import {rootCertificates} from 'node:tls';
+import {mockPrivateFixtureModes} from './fixtures/private-file-modes.mjs';
 import {validateRestored} from '../scripts/validate-restored.mjs';
 import {uploadArchive} from '../scripts/archive-to-kdrive.mjs';
 import {issueProbe,revokeProbe} from '../scripts/health-probe-grant.mjs';
@@ -22,22 +24,25 @@ const temp=()=>mkdtempSync(join(tmpdir(),'proton-maintenance-test-'));
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 function write(root:string,path:string,data:string|Buffer){const full=join(root,path);mkdirSync(dirname(full),{recursive:true});writeFileSync(full,data,{mode:0o600});return full;}
 function db(root:string,path:string,sql:string){const full=write(root,path,'');const d=new DatabaseSync(full);d.exec(sql);d.close();}
-function fixture(root:string,certificate:Buffer){
+function fixture(root:string){
  write(root,'etc/systemd/system/proton-mail-connector.service','[Service]\nEnvironment=PROTON_CONFIG=/var/lib/protonconnector/config.json\nEnvironment=PROTON_OAUTH_CONFIG=/var/lib/protonconnector/oauth-config.json\nEnvironment=PROTON_OAUTH_DB=/var/lib/protonconnector/oauth.sqlite\nEnvironment=PROTON_CALENDAR_CONFIG=/var/lib/protonconnector/calendar-config.json\n');
  write(root,'etc/systemd/system/proton-bridge.service','[Service]\nExecStart=/usr/bin/fixture\n');write(root,'etc/caddy/Caddyfile','fixture');write(root,'opt/protonmail-connector/current/REVISION','a'.repeat(40));
  write(root,'var/lib/protonconnector/config.json',JSON.stringify({username:'fixture@example.com',password:'fixture',sender:'fixture@example.com',certificatePath:'/var/lib/protonconnector/bridge-cert.pem',ledgerPath:'/var/lib/protonconnector/send-ledger.sqlite'}));
  write(root,'var/lib/protonconnector/oauth-config.json',JSON.stringify(oauthConfig));
  write(root,'var/lib/protonconnector/calendar-config.json',JSON.stringify({calendars:[{id:'fixture',name:'Fixture',url:'https://calendar.proton.me/api/calendar/v1/url/fixture/calendar.ics',timezone:'America/New_York'}]}));
- write(root,'var/lib/protonconnector/bridge-cert.pem',certificate);
+ write(root,'var/lib/protonconnector/bridge-cert.pem',rootCertificates[0]);
  write(root,'var/lib/protonbridge/.gnupg/private-keys-v1.d/fixture.key','fixture-presence-only');write(root,'var/lib/protonbridge/.password-store/fixture.gpg','fixture-presence-only');
  db(root,'var/lib/protonconnector/oauth.sqlite','CREATE TABLE oauth_records(kind TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,expires INTEGER NOT NULL,PRIMARY KEY(kind,key));');
  db(root,'var/lib/protonconnector/send-ledger.sqlite','CREATE TABLE sends(id TEXT PRIMARY KEY,expires INTEGER,state TEXT,payload TEXT,message_id TEXT);');
 }
+function validateFixture(root:string){
+ const restoreModes=mockPrivateFixtureModes(['config.json','oauth-config.json','calendar-config.json']
+  .map(name=>join(root,'var/lib/protonconnector',name)));
+ try{return validateRestored(root);}finally{restoreModes();}
+}
 test('restore validation requires exact schemas, configuration, certificate, key material and safe paths',()=>{
  const certDir=temp();
  try{
- execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(certDir,'key.pem'),'-out',join(certDir,'cert.pem'),'-days','1','-subj','/CN=fixture'],{stdio:'ignore'});
- const cert=readFileSync(join(certDir,'cert.pem'));
  const cases:[string,(root:string)=>void][]=[
   ['missing OAuth DB',r=>rmSync(join(r,'var/lib/protonconnector/oauth.sqlite'))],
   ['missing send DB',r=>rmSync(join(r,'var/lib/protonconnector/send-ledger.sqlite'))],
@@ -52,12 +57,12 @@ test('restore validation requires exact schemas, configuration, certificate, key
   ['empty password store',r=>rmSync(join(r,'var/lib/protonbridge/.password-store/fixture.gpg'))],
   ['missing service',r=>rmSync(join(r,'etc/systemd/system/proton-bridge.service'))],
   ['invalid revision',r=>write(r,'opt/protonmail-connector/current/REVISION','not a revision')],
-  ['escaping symlink',r=>symlinkSync(certDir,join(r,'outside'))],
+  ['escaping directory link',r=>symlinkSync(certDir,join(r,'outside'),process.platform==='win32'?'junction':'dir')],
  ];
- const good=temp();try{fixture(good,cert);const result=validateRestored(good);assert.equal(result.validationVersion,2);assert.equal(result.calendarCount,1);assert.equal(result.sqliteDatabasesChecked,2);assert.equal(result.liveServiceFailoverTested,false);
- const unit=join(good,'etc/systemd/system/proton-mail-connector.service');writeFileSync(unit,readFileSync(unit,'utf8').replace(/^Environment=PROTON_CALENDAR_CONFIG=.*\n/m,''));assert.equal(validateRestored(good).calendarCount,0);
+ const good=temp();try{fixture(good);const result=validateFixture(good);assert.equal(result.validationVersion,2);assert.equal(result.calendarCount,1);assert.equal(result.sqliteDatabasesChecked,2);assert.equal(result.liveServiceFailoverTested,false);
+ const unit=join(good,'etc/systemd/system/proton-mail-connector.service');writeFileSync(unit,readFileSync(unit,'utf8').replace(/^Environment=PROTON_CALENDAR_CONFIG=.*\n/m,''));assert.equal(validateFixture(good).calendarCount,0);
  }finally{rmSync(good,{recursive:true,force:true});}
- for(const [label,mutate] of cases){const root=temp();try{fixture(root,cert);mutate(root);assert.throws(()=>validateRestored(root),undefined,label);}finally{rmSync(root,{recursive:true,force:true});}}
+ for(const [label,mutate] of cases){const root=temp();try{fixture(root);mutate(root);assert.throws(()=>validateFixture(root),undefined,label);}finally{rmSync(root,{recursive:true,force:true});}}
  }finally{rmSync(certDir,{recursive:true,force:true});}
 });
 function uploadFixture(root:string){
@@ -90,14 +95,23 @@ test('upload detects a file changed while a piece is being transferred',()=>{
 test('maintenance grant CLI works through a deployment symlink and revokes its grant',async()=>{
  const root=temp();try{
   const config=write(root,'oauth-config.json',JSON.stringify(oauthConfig));
-  const database=join(root,'oauth.sqlite'),entry=join(root,'current-helper.mjs');
-  symlinkSync(fileURLToPath(new URL('../scripts/health-probe-grant.mjs',import.meta.url)),entry);
+  const database=join(root,'oauth.sqlite'),current=join(root,'current');
+  const release=fileURLToPath(new URL('../',import.meta.url));
+  symlinkSync(release,current,process.platform==='win32'?'junction':'dir');
+  const entry=join(current,'scripts','health-probe-grant.mjs');
+  const nodeArgs:string[]=[];
+  if(process.platform==='win32'){
+   const modeMock=new URL('./fixtures/private-file-modes.mjs',import.meta.url).href;
+   const preload=`import {mockPrivateFixtureModes} from ${JSON.stringify(modeMock)}; mockPrivateFixtureModes([process.env.PROTON_OAUTH_CONFIG]);`;
+   nodeArgs.push('--import',`data:text/javascript,${encodeURIComponent(preload)}`);
+  }
+  nodeArgs.push(entry);
   const env={...process.env,PROTON_OAUTH_CONFIG:config,PROTON_OAUTH_DB:database};
-  const grant=JSON.parse(execFileSync(process.execPath,[entry],{env,encoding:'utf8',stdio:['ignore','pipe','pipe']}));
+  const grant=JSON.parse(execFileSync(process.execPath,nodeArgs,{env,encoding:'utf8',stdio:['ignore','pipe','pipe']}));
   assert.match(grant.access_token,/^[A-Za-z0-9_-]{43}$/);assert.equal(grant.expires_in,120);
   const store=new OAuthStore(database),provider=new ProtonOAuth(oauthConfig,store);
   try{assert.deepEqual((await provider.verifyAccessToken(grant.access_token)).scopes,[HEALTH_SCOPE]);
-   assert.deepEqual(JSON.parse(execFileSync(process.execPath,[entry,'--revoke'],{env,input:grant.access_token,encoding:'utf8',stdio:['pipe','pipe','pipe']})),{revoked:true});
+   assert.deepEqual(JSON.parse(execFileSync(process.execPath,[...nodeArgs,'--revoke'],{env,input:grant.access_token,encoding:'utf8',stdio:['pipe','pipe','pipe']})),{revoked:true});
    await assert.rejects(provider.verifyAccessToken(grant.access_token));
   }finally{store.close();}
  }finally{rmSync(root,{recursive:true,force:true});}

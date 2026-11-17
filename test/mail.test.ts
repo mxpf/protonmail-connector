@@ -62,11 +62,12 @@ test('rich-text drafts use multipart alternatives and sanitize unsafe markup',as
   const service=new MailService({username:'owner@example.com',sender:'owner@example.com',password:'fake',certificatePath:'/unused',tlsServerName:'localhost',imapPort:1143,smtpPort:1025,ledgerPath:join(dir,'send.db')},()=>fake as unknown as ImapFlow);
   try {
     await service.execute('proton_create_draft',{
-      to:['reader@example.com'],subject:'Rich test',text:'Hello world\n\nOne item',
+      to:['reader@example.com'],bcc:['blind@example.com'],subject:'Rich test',text:'Hello world\n\nOne item',
       html:'<p onclick="steal()">Hello <strong>world</strong></p><script>alert(1)</script><ul><li>One item</li></ul><a href="javascript:steal()">bad link</a>',
     });
     assert.ok(appended);
     assert.match(appended.toString(),/multipart\/alternative/i);
+    assert.match(appended.toString(),/^Bcc: blind@example\.com\r?$/mi);
     const parsed=await simpleParser(appended);
     assert.equal(parsed.text,'Hello world\n\nOne item');
     assert.match(String(parsed.html),/font-family:-apple-system/);
