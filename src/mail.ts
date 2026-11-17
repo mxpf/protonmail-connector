@@ -143,8 +143,9 @@ export class MailService {
     const html = args.html === undefined ? undefined : sanitizeRichHtml(args.html);
     const mail = new MailComposer({from: this.config.sender, to: args.to, cc: args.cc, bcc: args.bcc,
       subject: args.subject, text: args.text, html, messageId, inReplyTo, references: inReplyTo,
-      attachments, keepBcc: draft, disableFileAccess: true, disableUrlAccess: true});
-    const raw = await mail.compile().build();
+      attachments, disableFileAccess: true, disableUrlAccess: true}).compile();
+    mail.keepBcc = draft;
+    const raw = await mail.build();
     if (raw.length > MAX_MESSAGE) throw new PublicError('message_too_large', 'Composed message exceeds 12 MiB.');
     return {raw: raw.toString('base64'), envelope: {from: this.config.sender, to: [...new Set([...args.to, ...args.cc, ...args.bcc])]},
       messageId, preview: {from: this.config.sender, ...args, html, messageId,

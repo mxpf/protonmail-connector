@@ -10,10 +10,13 @@ export const MAX_HTML = 2 * 1024 * 1024;
 const MAX_DEPTH = 128;
 const MAX_TAGS = 20_000;
 
-export function parseMail(raw: Buffer) {
+export async function parseMail(raw: Buffer) {
   // Preserve mailparser's mixed-part ordering and charset/transfer decoding.
   // Its converter handles some layouts; extractBody covers the HTML-only gaps.
-  return simpleParser(raw, {skipImageLinks: true, skipTextToHtml: true, maxHtmlLengthToParse: MAX_HTML});
+  const mail = await simpleParser(raw, {skipImageLinks: true, skipTextToHtml: true, maxHtmlLengthToParse: MAX_HTML});
+  // Newer MailParser returns conversion failures on the result instead of rejecting.
+  if ('textConversionError' in mail && mail.textConversionError instanceof Error) throw mail.textConversionError;
+  return mail;
 }
 
 export function extractBody(mail: Pick<ParsedMail, 'text' | 'html'>) {
