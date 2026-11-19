@@ -6,6 +6,17 @@ Caddy site configuration, and the selected source revision. Provision the operat
 system and install Node, the official signed Bridge package, Caddy, and that source
 revision separately. Keep the decryption identity outside the hosted server.
 
+## Finding the recovery key
+
+The current private age identity is backed up in the owner's private kDrive at
+`/Private/07 System/Proton Mail Connector recovery key 2026-11-19/backup-identity.txt`.
+Its cloud readback matched the MITRA working copy by SHA-256 on November 19, 2026.
+The working path is `%LOCALAPPDATA%\ProtonConnector\private\backup-identity.txt`.
+See [MITRA recovery instructions](mitra-maintenance.md#backups-and-recovery) for
+restoring it with owner-only permissions and testing an authenticated decryption.
+This identity covers snapshots encrypted after its recipient was added on
+November 19. The original key for earlier snapshots remains unrecovered.
+
 ## Cold restore
 
 1. Match the archive's size and SHA-256 to its original verified download receipt

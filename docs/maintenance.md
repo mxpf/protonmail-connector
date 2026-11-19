@@ -81,9 +81,13 @@ returned through the hosted save action.
 
 ## Encrypted off-server backups and restore checks
 
-Install age on the server and local executor. Generate the private recovery
-identity on the local executor, outside Git/cloud sync; install only its public
-recipient at `/etc/proton-connector-backup.age.pub`. Install
+Install age on the server and local executor. Generate the working private recovery
+identity outside Git and ordinary cloud sync. The owner-approved independent key
+copy is in private kDrive at
+`/Private/07 System/Proton Mail Connector recovery key 2026-11-19/backup-identity.txt`.
+Follow [MITRA recovery instructions](mitra-maintenance.md#backups-and-recovery) to
+retrieve and verify it. Install only its public recipient at
+`/etc/proton-connector-backup.age.pub`. Install
 `deploy/backup-hosted.sh` root-owned, mode 0700, at
 `/usr/local/sbin/proton-connector-backup`.
 

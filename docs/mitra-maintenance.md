@@ -35,11 +35,28 @@ An active weekly job in this chat runs the backup and restore check on MITRA on
 Sundays at 04:00 America/New_York. MITRA and the app must be available for it to run.
 The hosted monitoring and recovery timers continue independently.
 
-The recovery identity lives under `%LOCALAPPDATA%\ProtonConnector\private` with
-owner-only Windows permissions. The hosted server receives only its public
-recipient. Keep an independent protected copy of the private identity before
-retiring or reinstalling MITRA. Existing backup recipients and archives are retained.
-The MITRA identity added on November 19 cannot decrypt backups made before it was added.
+The working recovery identity is
+`%LOCALAPPDATA%\ProtonConnector\private\backup-identity.txt`, with owner-only Windows
+permissions. The hosted server receives only its public recipient.
+
+An independent copy is stored in private kDrive at
+`/Private/07 System/Proton Mail Connector recovery key 2026-11-19/backup-identity.txt`.
+The cloud copy was read back on November 19, 2026, and its SHA-256 matched the
+working identity exactly. This owner-approved recovery copy is deliberately kept
+outside MITRA so the identity survives loss of the workstation.
+
+To recover the identity on a replacement workstation, sign into the owner's kDrive,
+open that exact folder, and download `backup-identity.txt` into an owner-only local
+directory. On MITRA, restore it to the working path above. Apply and verify the
+directory's owner-only Windows ACLs before placing the key there. Keep the key's
+contents in private files and process pipes. Check its public recipient with
+`age-keygen -y`, compare it with the server's backup recipient record, and run
+`scripts/backup-maintenance.ps1 -VerifyLatest` against a matching downloaded archive
+and checksum receipt. Retain the cloud recovery copy when rebuilding MITRA.
+
+Existing backup recipients and archives are retained. The MITRA identity added on
+November 19 cannot decrypt backups made before it was added. The original identity
+for the older archives remains unrecovered.
 
 Downloaded archives and their checksum and restore receipts live under the same
 private directory in `backups`. Windows validation verifies owner-only ACLs across
