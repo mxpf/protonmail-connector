@@ -1,0 +1,46 @@
+name: Release checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=low
+      - run: python -B test/self-heal.test.py
+      - run: git fsck --no-dangling && git diff --exit-code
+      - name: Check deployment scripts
+        run: |
+          for script in deploy/*.sh scripts/*.sh; do bash -n "$script"; done
+          python -B -c 'import ast,pathlib; [ast.parse(p.read_text(),filename=str(p)) for d in ("deploy","scripts") for p in pathlib.Path(d).glob("*.py")]'
+      - name: Bind build to source revision
+        run: git rev-parse HEAD > REVISION
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proton-release-${{ github.sha }}
+          path: |
+            dist
+            scripts
+            deploy
+            assets
+            package.json
+            package-lock.json
+            REVISION
+          retention-days: 14

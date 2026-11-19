@@ -27,6 +27,27 @@ function persist(path:string,record:unknown,exclusive=false) {
   if(!exclusive)renameSync(target,path);
   const dir=openSync(join(path,'..'),'r');try{fsyncSync(dir);}finally{closeSync(dir);}
 }
+export function attachmentTransferStatus(operationId:string,config=privateConfig()) {
+  tools.proton_attachment_transfer_status.schema.parse({operationId});
+  const directory=join(config.stateDirectory,'proton-attachments');
+  const path=join(directory,operationId+'.json');
+  try {
+    const folder=lstatSync(directory),file=lstatSync(path);
+    if(!folder.isDirectory()||(folder.mode&0o077)||!file.isFile()||(file.mode&0o077))throw new Error('Private transfer state required');
+    const record=JSON.parse(readFileSync(path,'utf8'));
+    if(record.operationId!==operationId)throw new Error('Transfer journal mismatch');
+    if(record.status==='verified') {
+      const result=z.object({status:z.literal('verified'),operationId:z.string().uuid(),destination:tools.proton_save_attachment_to_kdrive.schema.shape.destination,size:z.number().int().positive().max(8*1024*1024),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).parse(record.result);
+      if(result.operationId!==operationId || result.size!==record.size || result.sha256!==record.sha256)throw new Error('Transfer verification mismatch');
+      return {...result,verifiedAtUpload:true};
+    }
+    if(!['reserved','uploading','needs_reconciliation'].includes(record.status))throw new Error('Invalid journal status');
+    return {operationId,status:record.status,doNotRetry:true};
+  } catch(error) {
+    if((error as NodeJS.ErrnoException).code==='ENOENT')return {operationId,status:'not_found',destinationAbsenceConfirmed:false};
+    throw new PublicError('transfer_status_unavailable','Transfer state could not be verified. Inspect the private journal before retrying.');
+  }
+}
 async function upload(config:Config,source:string,destination:string,bytes:number,digest:string) {
   const result=await exec(process.execPath,[join(config.repository,'dist/transfer-cli.js'),'upload','--source',source,'--path',destination,'--size',String(bytes),'--sha256',digest,'--quiet'],{
     cwd:config.repository,timeout:120000,maxBuffer:65536,

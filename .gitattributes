@@ -1,0 +1,8 @@
+*.sh text eol=lf
+*.py text eol=lf
+*.mjs text eol=lf
+*.yml text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+deploy/proton-bridge-login text eol=lf
+deploy/proton-connector-oauth-setup text eol=lf

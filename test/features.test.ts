@@ -102,3 +102,18 @@ test('draft reply readback distinguishes retained, stripped and unavailable head
   }finally{f.service.close()}
  }
 });
+
+test('reply workflow returns the actual saved draft hash, recipients, and text after one append',async()=>{
+ const f=fixture();let appends=0;
+ const append=f.fake.append;
+ f.fake.append=async(...args:any[])=>{appends++;return (append as any)(...args)};
+ (f.fake as any).fetchOne=async(uid:string)=>({uid:Number(uid),size:uid==='8'?f.appended?.length:source.length,flags:new Set(['\\Draft']),envelope:{messageId:'<source@example.com>'},headers:Buffer.from('References: <root@example.com>\r\nIn-Reply-To: <source@example.com>\r\n\r\n')});
+ (f.fake as any).download=async(uid:string)=>({content:Readable.from([uid==='8'?f.appended!:source])});
+ try {
+  const result:any=await f.service.execute('proton_draft_reply',{to:['reader@example.com'],replyToMessage:ref,subject:'Re: Source',text:'Verified reply'});
+  assert.equal(appends,1);assert.equal(result.verification,'read_back');
+  assert.equal(result.readback.text.trimEnd(),'Verified reply');
+  assert.equal(result.readback.sourceSha256,createHash('sha256').update(f.appended!).digest('hex'));
+  assert.equal(result.readback.to.value[0].address,'reader@example.com');
+ }finally{f.service.close();}
+});

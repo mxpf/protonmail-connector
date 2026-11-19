@@ -10,7 +10,7 @@ import {tools, instructions, PublicError, type ToolName, MAX_RESPONSE_BYTES} fro
 export function createServer(service: Pick<MailService, 'execute'>, allowedTools?: readonly ToolName[]) {
   // Allow all 50 attachment references and 75 recipients in a single composition.
   const server = new McpServer({name:'proton-mail-connector',version:'0.1.0'}, {instructions,maxToolInputElements:512});
-  const reads = new Set(['proton_status','proton_list_mailboxes','proton_search','proton_thread','proton_read','proton_read_source','proton_read_attachment']);
+  const reads = new Set(['proton_status','proton_list_mailboxes','proton_search','proton_search_mailboxes','proton_thread','proton_read_thread','proton_attachment_transfer_status','proton_read','proton_read_source','proton_read_attachment']);
   for (const name of Object.keys(tools) as ToolName[]) {
     if (allowedTools && !allowedTools.includes(name)) continue;
     const definition = tools[name];

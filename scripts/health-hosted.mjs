@@ -2,6 +2,7 @@ import {execFileSync} from 'node:child_process';
 import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {realpathSync} from 'node:fs';
+import {sshCommand,sshArgs} from './ssh-options.mjs';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 const origin='https://mail-tools.pfennig.haus';
@@ -41,11 +42,11 @@ export async function checkHealth({fetcher=fetch,issue,revoke,sshCheck}) {
  return {checkedAt:new Date().toISOString(),healthy:Object.values(checks).every(Boolean),checks};
 }
 if(process.argv[1] && realpathSync(process.argv[1])===fileURLToPath(import.meta.url)) {
- const ssh=['-i',`${homedir()}/.ssh/protonmail_hetzner_ed25519`,'-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10','-o','ServerAliveInterval=15','-o','ServerAliveCountMax=2','hausadmin@135.181.111.93'];
+ const ssh=sshArgs;
  const command='sudo -H -u protonconnector env PROTON_OAUTH_CONFIG=/var/lib/protonconnector/oauth-config.json PROTON_OAUTH_DB=/var/lib/protonconnector/oauth.sqlite /usr/local/bin/node /opt/protonmail-connector/current/scripts/health-probe-grant.mjs';
  const result=await checkHealth({
-  issue:()=>JSON.parse(execFileSync('ssh',[...ssh,command],{encoding:'utf8',timeout:30000,stdio:['ignore','pipe','pipe']})),
-  revoke:token=>JSON.parse(execFileSync('ssh',[...ssh,command+' --revoke'],{input:token,encoding:'utf8',timeout:30000,stdio:['pipe','pipe','pipe']})),
+  issue:()=>JSON.parse(execFileSync(sshCommand,[...ssh,command],{encoding:'utf8',timeout:30000,stdio:['ignore','pipe','pipe']})),
+  revoke:token=>JSON.parse(execFileSync(sshCommand,[...ssh,command+' --revoke'],{input:token,encoding:'utf8',timeout:30000,stdio:['pipe','pipe','pipe']})),
   sshCheck:()=>JSON.parse(execFileSync(process.execPath,[fileURLToPath(new URL('./check-hosted-mcp.mjs',import.meta.url))],{encoding:'utf8',timeout:60000,stdio:['ignore','pipe','pipe']})),
  });
  console.log(JSON.stringify(result));if(!result.healthy)process.exitCode=1;

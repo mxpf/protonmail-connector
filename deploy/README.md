@@ -42,6 +42,13 @@ and are excluded from Git.
 
 ## Release and verification
 
+Every push and pull request runs `.github/workflows/checks.yml`. Require a passing
+run for the exact release commit before activation. The workflow packages a build
+with its source revision. The live release must be an ancestor of the candidate,
+and the working tree must be clean. Archive sources with `core.autocrlf=false`.
+After the atomic switch below, run `node scripts/verify-release.mjs <full-commit>`
+from MITRA and verify the monitoring and recovery timers complete successfully.
+
 Run `npm ci`, `npm run check`, `npm test`, and `npm run build`. Install code and
 production dependencies in a root-owned release directory. Keep private state
 outside releases. Set the public logo file to mode 0644 when copying from macOS.

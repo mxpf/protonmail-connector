@@ -10,6 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {request} from 'node:http';
 import {rootCertificates} from 'node:tls';
 import {mockPrivateFixtureModes} from './fixtures/private-file-modes.mjs';
+import {windowsPrivateDirectory} from '../scripts/private-directory.mjs';
 import {validateRestored} from '../scripts/validate-restored.mjs';
 import {uploadArchive} from '../scripts/archive-to-kdrive.mjs';
 import {issueProbe,revokeProbe} from '../scripts/health-probe-grant.mjs';
@@ -20,7 +21,11 @@ import {createHttpApp} from '../src/http.js';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 const oauthConfig={issuerUrl:'https://mail-tools.pfennig.haus',githubClientId:'fixture-client',githubClientSecret:'fixture-secret-not-a-real-secret',githubOwnerId:'123',githubOwnerLogin:'fixture'} as const;
-const temp=()=>mkdtempSync(join(tmpdir(),'proton-maintenance-test-'));
+const temp=()=>{
+ const root=mkdtempSync(join(tmpdir(),'proton-maintenance-test-'));
+ windowsPrivateDirectory(root,true);
+ return root;
+};
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 function write(root:string,path:string,data:string|Buffer){const full=join(root,path);mkdirSync(dirname(full),{recursive:true});writeFileSync(full,data,{mode:0o600});return full;}
 function db(root:string,path:string,sql:string){const full=write(root,path,'');const d=new DatabaseSync(full);d.exec(sql);d.close();}

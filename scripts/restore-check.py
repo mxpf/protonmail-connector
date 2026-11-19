@@ -13,7 +13,12 @@ def check(archive,identity):
  os.umask(0o077)
  digest,size=identity_of(archive)
  with tempfile.TemporaryDirectory(prefix='proton-restore-') as work:
-  root=pathlib.Path(work);plain=root/'snapshot.tar.gz';restored=root/'restored';restored.mkdir(mode=0o700)
+  root=pathlib.Path(work);plain=root/'snapshot.tar.gz';restored=root/'restored'
+  if os.name=='nt':
+   helper=pathlib.Path(__file__).resolve().with_name('private-directory.mjs')
+   subprocess.run(['node',str(helper),'--create',str(root)],check=True,capture_output=True)
+  restored.mkdir(mode=0o700)
+  if os.name=='nt':subprocess.run(['node',str(helper),'--create',str(restored)],check=True,capture_output=True)
   with plain.open('xb') as f:subprocess.run(['age','-d','-i',str(identity),str(archive)],stdout=f,stderr=subprocess.PIPE,check=True)
   with tarfile.open(plain) as tar:tar.extractall(restored,filter='data')
   validator=pathlib.Path(__file__).resolve().with_name('validate-restored.mjs')

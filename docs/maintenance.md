@@ -1,5 +1,9 @@
 # Maintenance and feature completion
 
+Current workstation ownership, backup verification, and new mail workflows are
+documented in [MITRA maintenance](mitra-maintenance.md). Historical references to
+Yantra below describe the earlier setup. MITRA now owns workstation backup runs.
+
 ## Mail workflows
 
 - `proton_prepare_forward` includes the complete decoded source text and optional

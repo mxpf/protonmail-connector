@@ -10,16 +10,34 @@ test -s "$recipient"
 work=$(mktemp -d /var/tmp/proton-backup.XXXXXXXX)
 connector_active=false
 bridge_active=false
+active_timers=()
+for timer in proton-email-monitor.timer proton-self-heal.timer; do
+  if systemctl is-active --quiet "$timer"; then active_timers+=("$timer"); fi
+done
 systemctl is-active --quiet proton-mail-connector && connector_active=true
 systemctl is-active --quiet proton-bridge && bridge_active=true
 resume() {
   if "$bridge_active"; then systemctl start proton-bridge; fi
   if "$connector_active"; then systemctl start proton-mail-connector; fi
+  for timer in "${active_timers[@]}"; do systemctl start "$timer"; done
 }
 cleanup() { resume; rm -rf -- "$work"; }
 trap cleanup EXIT
 mkdir -p "$work/snapshot" /var/lib/proton-backups
 chmod 700 /var/lib/proton-backups
+# Let any in-flight alert or recovery operation finish before freezing writers.
+# Stop only active timers, retaining their prior enabled/disabled state.
+for timer in "${active_timers[@]}"; do systemctl stop "$timer"; done
+for service in proton-email-monitor.service proton-self-heal.service; do
+  for attempt in $(seq 1 120); do
+    if ! systemctl is-active --quiet "$service"; then break; fi
+    sleep 1
+  done
+  if systemctl is-active --quiet "$service"; then
+    echo 'Maintenance is still running; snapshot deferred.' >&2
+    exit 1
+  fi
+done
 # Freeze both writers only while copying. Encryption/compression runs after restart.
 systemctl stop proton-mail-connector
 systemctl stop proton-bridge
@@ -37,6 +55,7 @@ tar -C / --exclude='S.gpg-agent*' --exclude='S.dirmngr' --exclude='*.sock' -cf -
 resume
 connector_active=false
 bridge_active=false
+active_timers=()
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 output=/var/lib/proton-backups/proton-state-$stamp.tar.gz.age
 tar -C "$work/snapshot" -czf - . | age -R "$recipient" -o "$output.partial"

@@ -10,9 +10,9 @@ import type {z} from 'zod';
 import type {Config} from './config.js';
 import {SendLedger, type Prepared} from './send-ledger.js';
 import {extractBody, parseMail, sourcePage, MAX_MESSAGE} from './body.js';
-import {tools, composition, type MessageRef, type SearchInput, type ToolName, PublicError} from '../shared/protocol.js';
+import {tools, composition, messageRef, type MessageRef, type SearchInput, type ToolName, PublicError} from '../shared/protocol.js';
 import {CalendarReader} from './calendar/service.js';
-import {saveAttachmentToKdrive} from './kdrive.js';
+import {saveAttachmentToKdrive, attachmentTransferStatus} from './kdrive.js';
 
 const MAX_ATTACHMENT = 8 * 1024 * 1024;
 const ALLOWED_RICH_TEXT_TAGS = ['p','br','strong','b','em','i','u','s','ul','ol','li','blockquote','a'] as const;
@@ -92,11 +92,12 @@ export class MailService {
     try { return await parseMail(raw); }
     catch { throw new PublicError('body_parse_failed', 'MIME parsing failed. Use proton_read_source with raw_mime for bounded recovery.'); }
   }
-  private async search(client: ImapFlow, args: SearchInput) {
+  private async search(client: ImapFlow, args: SearchInput, expectedUidValidity?:string) {
     const lock = await client.getMailboxLock(args.mailbox, {readOnly: true});
     try {
       const uidValidity = client.mailbox ? client.mailbox.uidValidity.toString() : '';
-      if (args.beforeUid === 1) return {mailbox: args.mailbox, messages: [], nextBeforeUid: null};
+      if(expectedUidValidity && uidValidity!==expectedUidValidity)throw new PublicError('stale_reference','This mailbox changed. Start a fresh search.');
+      if (args.beforeUid === 1) return {mailbox: args.mailbox, uidValidity, messages: [], nextBeforeUid: null};
       const query: SearchObject = {all: true};
       for (const k of ['from', 'to', 'subject', 'text', 'since', 'before'] as const) if (args[k]) query[k] = args[k];
       if (args.unread !== undefined) query.seen = !args.unread;
@@ -104,7 +105,7 @@ export class MailService {
       const ids = (await client.search(query, {uid: true}) || []).sort((a, b) => b - a);
       const chosen = ids.slice(0, args.limit);
       const messages = chosen.length ? await client.fetchAll(chosen, {envelope: true, flags: true, size: true}, {uid: true}) : [];
-      return {mailbox: args.mailbox, messages: messages.sort((a,b) => b.uid-a.uid).map(m => ({
+      return {mailbox: args.mailbox, uidValidity, messages: messages.sort((a,b) => b.uid-a.uid).map(m => ({
         message: {mailbox: args.mailbox, uidValidity, uid: m.uid},
         envelope: m.envelope, flags: [...m.flags ?? []], size: m.size,
       })), nextBeforeUid: ids.length > chosen.length ? chosen.at(-1) : null};
@@ -174,12 +175,51 @@ export class MailService {
   async execute(name: ToolName, input: unknown): Promise<unknown> {
     // Health authentication uses its own connections and must not mistake a slow
     // attachment upload for an outage or release the active operation's lock.
-    if(name==='proton_status')return this.run(name,input);
+    if(name==='proton_status'||name==='proton_attachment_transfer_status')return this.run(name,input);
     if (this.busy) throw new PublicError('busy', 'Another mail operation is running. Try again shortly.', 429);
     this.busy = true;
     try { return await this.run(name, input); } finally { this.busy = false; }
   }
   private async run(name: ToolName, input: unknown): Promise<unknown> {
+    if(name==='proton_attachment_transfer_status')return attachmentTransferStatus(tools.proton_attachment_transfer_status.schema.parse(input).operationId);
+    if(name==='proton_search_mailboxes') {
+      const args=tools.proton_search_mailboxes.schema.parse(input);
+      if(new Set(args.continuations.map(c=>c.mailbox)).size!==args.continuations.length || args.continuations.some(c=>!args.mailboxes.includes(c.mailbox)))throw new PublicError('invalid_continuation','Use one continuation per selected folder.');
+      const results=[];
+      const {mailboxes,continuations,limitPerMailbox,...filters}=args;
+      for(const mailbox of args.mailboxes) {
+        const continuation=args.continuations.find(c=>c.mailbox===mailbox);
+        try {
+          const page=await this.connected(c=>this.search(c,{...filters,mailbox,limit:limitPerMailbox,beforeUid:continuation?.beforeUid},continuation?.uidValidity));
+          results.push({...page,complete:page.nextBeforeUid===null,nextContinuation:page.nextBeforeUid?{mailbox,uidValidity:page.uidValidity,beforeUid:page.nextBeforeUid}:null});
+        } catch(error) {results.push({mailbox,error:error instanceof PublicError?error.code:'search_failed',complete:false});}
+      }
+      return {results,searchedMailboxes:args.mailboxes,incomplete:results.some(page=>!page.complete)};
+    }
+    if(name==='proton_read_thread') {
+      const args=tools.proton_read_thread.schema.parse(input);
+      const thread=await this.run('proton_thread',args) as {messages:{message:MessageRef}[];incomplete:boolean;searchedMailboxes:string[]};
+      const messages=[];
+      let incomplete=thread.incomplete;
+      for(const row of thread.messages) {
+        try {
+          const read=await this.run('proton_read',{message:row.message}) as {body:{incomplete:boolean};truncated:boolean};
+          if(read.body.incomplete||read.truncated)incomplete=true;
+          messages.push(read);
+        }
+        catch {incomplete=true;messages.push({message:row.message,error:'read_failed'});}
+      }
+      return {...thread,messages,incomplete};
+    }
+    if(name==='proton_draft_reply') {
+      const args=tools.proton_draft_reply.schema.parse(input);
+      const draft=await this.run('proton_create_draft',args) as {mailbox:string;uid?:number;uidValidity?:string};
+      try {
+        const message=messageRef.parse({mailbox:draft.mailbox,uid:draft.uid,uidValidity:draft.uidValidity});
+        const readback=await this.run('proton_read',{message});
+        return {...draft,verification:'read_back',readback};
+      } catch {return {...draft,verification:'unconfirmed',doNotRetry:true};}
+    }
     if (name === 'proton_save_attachment_to_kdrive') {
       const args = tools.proton_save_attachment_to_kdrive.schema.parse(input);
       return saveAttachmentToKdrive(args, async () => this.connected(c => this.selected(c,args.message,true,async()=>{

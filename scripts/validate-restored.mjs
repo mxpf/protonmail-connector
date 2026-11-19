@@ -4,12 +4,15 @@ import {resolve,sep,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {X509Certificate} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {loadConfig} from '../dist/src/config.js';
-import {loadOAuthConfig} from '../dist/src/oauth.js';
-import {loadConfig as loadCalendarConfig} from '../dist/src/calendar/config.js';
+import {loadConfig,configSchema} from '../dist/src/config.js';
+import {loadOAuthConfig,oauthConfigSchema} from '../dist/src/oauth.js';
+import {loadConfig as loadCalendarConfig,configSchema as calendarConfigSchema} from '../dist/src/calendar/config.js';
 import {kdriveConfigSchema} from '../dist/src/kdrive.js';
+import {windowsPrivateDirectory} from './private-directory.mjs';
 export function validateRestored(directory) {
  const root=realpathSync(directory);
+ // Windows restores use owner-only ACLs checked across the complete offline tree.
+ windowsPrivateDirectory(root);
  const inside=p=>{const real=realpathSync(p);if(!real.startsWith(root+sep))throw Error('Restored path escapes snapshot');return real;};
  const path=value=>{if(typeof value!=='string'||!value.startsWith('/')||value.split('/').includes('..'))throw Error('Invalid restored path');return inside(resolve(root,'.'+value));};
  const file=value=>{const p=path(value);if(!statSync(p).isFile()||statSync(p).size===0)throw Error('Missing required file');return p;};
@@ -21,13 +24,14 @@ export function validateRestored(directory) {
  // Check the actual service's referenced paths, never arbitrary database counts.
  let config,calendarCount=0;
  try {
-  config=loadConfig(file(environment.PROTON_CONFIG));
-  loadOAuthConfig(file(environment.PROTON_OAUTH_CONFIG));
+  const configuration=(value,loader,schema)=>process.platform==='win32'?schema.parse(JSON.parse(readFileSync(file(value),'utf8'))):loader(file(value));
+  config=configuration(environment.PROTON_CONFIG,loadConfig,configSchema);
+  configuration(environment.PROTON_OAUTH_CONFIG,loadOAuthConfig,oauthConfigSchema);
   new X509Certificate(readFileSync(file(config.certificatePath)));
-  if(environment.PROTON_CALENDAR_CONFIG)calendarCount=loadCalendarConfig(file(environment.PROTON_CALENDAR_CONFIG)).calendars.length;
+  if(environment.PROTON_CALENDAR_CONFIG)calendarCount=configuration(environment.PROTON_CALENDAR_CONFIG,loadCalendarConfig,calendarConfigSchema).calendars.length;
   if(environment.PROTON_KDRIVE_CONFIG) {
    const kdrivePath=file(environment.PROTON_KDRIVE_CONFIG);
-   if(statSync(kdrivePath).mode&0o077)throw Error('Private kDrive configuration required');
+   if(process.platform!=='win32' && statSync(kdrivePath).mode&0o077)throw Error('Private kDrive configuration required');
    kdriveConfigSchema.parse(JSON.parse(readFileSync(kdrivePath,'utf8')));
   }
  }catch{throw Error('Required restored configuration or certificate is invalid');}
